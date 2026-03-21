@@ -1,0 +1,43 @@
+.DS_Store
+
+# Editor and OS artifacts
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+frontend/.env.local
+backend/.env
+ai-service/.env
+mobile-app/.env
+
+# Node and frontend artifacts
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+
+# Java and backend artifacts
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+*.class
+
+# Python artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+ai-service/.venv/
+ai-service/.pytest_cache/
+ai-service/.ruff_cache/
+ai-service/__pycache__/
+
+# Test and coverage output
+coverage/
+.coverage

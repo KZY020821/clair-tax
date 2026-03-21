@@ -1,0 +1,7 @@
+[tools]
+node = "22"
+python = "3.11"
+java = "21"
+
+[env]
+_.python.venv = { path = ".venv", create = true }
