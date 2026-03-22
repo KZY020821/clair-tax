@@ -27,6 +27,39 @@ public class ReliefCategory {
     @Column(name = "max_amount", nullable = false)
     private BigDecimal maxAmount;
 
+    @Column(nullable = false)
+    private String type;
+
+    @Column(nullable = false)
+    private String code;
+
+    @Column(nullable = false)
+    private String section;
+
+    @Column(name = "input_type", nullable = false)
+    private String inputType;
+
+    @Column(name = "unit_amount")
+    private BigDecimal unitAmount;
+
+    @Column(name = "display_order", nullable = false)
+    private Integer displayOrder;
+
+    @Column(name = "group_code")
+    private String groupCode;
+
+    @Column(name = "group_max_amount")
+    private BigDecimal groupMaxAmount;
+
+    @Column(name = "exclusive_group_code")
+    private String exclusiveGroupCode;
+
+    @Column(name = "requires_category_code")
+    private String requiresCategoryCode;
+
+    @Column(name = "auto_apply", nullable = false)
+    private boolean autoApply;
+
     @Column(name = "requires_receipt", nullable = false)
     private boolean requiresReceipt;
 
@@ -51,6 +84,50 @@ public class ReliefCategory {
 
     public BigDecimal getMaxAmount() {
         return maxAmount;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public String getSection() {
+        return section;
+    }
+
+    public String getInputType() {
+        return inputType;
+    }
+
+    public BigDecimal getUnitAmount() {
+        return unitAmount;
+    }
+
+    public Integer getDisplayOrder() {
+        return displayOrder;
+    }
+
+    public String getGroupCode() {
+        return groupCode;
+    }
+
+    public BigDecimal getGroupMaxAmount() {
+        return groupMaxAmount;
+    }
+
+    public String getExclusiveGroupCode() {
+        return exclusiveGroupCode;
+    }
+
+    public String getRequiresCategoryCode() {
+        return requiresCategoryCode;
+    }
+
+    public boolean isAutoApply() {
+        return autoApply;
     }
 
     public boolean isRequiresReceipt() {

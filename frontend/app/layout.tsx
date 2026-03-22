@@ -17,11 +17,13 @@ type RootLayoutProps = Readonly<{
 }>;
 
 export default function RootLayout({ children }: RootLayoutProps) {
+  const currentYear = new Date().getFullYear();
+
   return (
     <html lang="en">
-      <body>
+      <body suppressHydrationWarning>
         <Providers>
-          <AppShell>{children}</AppShell>
+          <AppShell currentYear={currentYear}>{children}</AppShell>
         </Providers>
       </body>
     </html>

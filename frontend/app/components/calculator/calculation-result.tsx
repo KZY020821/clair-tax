@@ -12,10 +12,10 @@ type CalculationResultProps = Readonly<{
 function SummaryCard({
   label,
   value,
-  highlight = false,
-}: Readonly<{ label: string; value: string; highlight?: boolean }>) {
+  accent = false,
+}: Readonly<{ label: string; value: string; accent?: boolean }>) {
   return (
-    <article className={highlight ? "metric-card-accent" : "metric-card"}>
+    <article className={accent ? "metric-card-accent" : "metric-card"}>
       <p className="text-sm font-medium text-brand-muted">{label}</p>
       <p className="mt-3 text-3xl text-brand-black">{value}</p>
     </article>
@@ -45,7 +45,7 @@ export default function CalculationResult({
         <p className="app-eyebrow">Calculation Result</p>
         <h2 className="mt-3 text-2xl text-brand-black">Working on your estimate</h2>
         <p className="mt-3 text-sm leading-6 text-brand-muted">
-          Calculating tax from the selected policy year...
+          Calculating the YA 2025 summary from the selected relief inputs...
         </p>
       </section>
     );
@@ -55,10 +55,11 @@ export default function CalculationResult({
     return (
       <section className="app-panel p-6">
         <p className="app-eyebrow">Calculation Result</p>
-        <h2 className="mt-3 text-2xl text-brand-black">Result preview</h2>
+        <h2 className="mt-3 text-2xl text-brand-black">Summary preview</h2>
         <p className="mt-3 text-sm leading-6 text-brand-muted">
-          Submit the calculator form to see chargeable income, total relief, total
-          tax payable, and the progressive bracket breakdown.
+          Submit the calculator to review gross income before deduction, tax
+          deductions, taxable income, tax amount, less zakat, less rebate, and the
+          final tax you should pay.
         </p>
       </section>
     );
@@ -70,7 +71,7 @@ export default function CalculationResult({
         <div>
           <p className="app-eyebrow">Calculation Result</p>
           <h2 className="mt-3 text-2xl text-brand-black">
-            Policy Year {result.policyYear}
+            Assessment Year {result.policyYear}
           </h2>
         </div>
         <span className={isPending ? "app-pill-blue" : "app-pill"}>
@@ -78,28 +79,32 @@ export default function CalculationResult({
         </span>
       </div>
 
-      <p className="mt-3 text-sm leading-6 text-brand-muted">
-        The backend evaluates each submitted claim and returns the final tax view
-        as a bracket-by-bracket summary.
-      </p>
-
       <div className="mt-6 grid gap-4">
         <SummaryCard
-          label="Gross income"
+          label="Gross Income Before Deduction"
           value={formatCurrency(result.grossIncome)}
         />
         <SummaryCard
-          label="Total relief"
+          label="Tax Deductions"
           value={formatCurrency(result.totalRelief)}
         />
         <SummaryCard
-          label="Chargeable income"
-          value={formatCurrency(result.chargeableIncome)}
+          label="Taxable Income"
+          value={formatCurrency(result.taxableIncome ?? result.chargeableIncome)}
         />
         <SummaryCard
-          label="Total tax payable"
-          value={formatCurrency(result.totalTaxPayable)}
-          highlight
+          label="Tax Amount"
+          value={formatCurrency(result.taxAmount)}
+        />
+        <SummaryCard
+          label="Less Tax Rebate"
+          value={formatCurrency(result.taxRebate)}
+        />
+        <SummaryCard label="Less Zakat" value={formatCurrency(result.zakat)} />
+        <SummaryCard
+          label="Tax You Should Pay"
+          value={formatCurrency(result.taxYouShouldPay)}
+          accent
         />
       </div>
 
@@ -108,8 +113,8 @@ export default function CalculationResult({
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-brand-line bg-brand-ice text-brand-black">
               <tr>
-                <th className="px-4 py-3 font-medium">Bracket min</th>
-                <th className="px-4 py-3 font-medium">Bracket max</th>
+                <th className="px-4 py-3 font-medium">Bracket start</th>
+                <th className="px-4 py-3 font-medium">Bracket end</th>
                 <th className="px-4 py-3 font-medium">Rate</th>
                 <th className="px-4 py-3 font-medium">Taxable amount</th>
                 <th className="px-4 py-3 font-medium">Tax for bracket</th>

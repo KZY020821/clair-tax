@@ -11,5 +11,5 @@ public interface ReliefCategoryRepository extends JpaRepository<ReliefCategory, 
 
     List<ReliefCategory> findAllByPolicyYearIdAndIdIn(UUID policyYearId, Collection<UUID> ids);
 
-    List<ReliefCategory> findAllByPolicyYearIdOrderByNameAsc(UUID policyYearId);
+    List<ReliefCategory> findAllByPolicyYearIdOrderByDisplayOrderAscNameAsc(UUID policyYearId);
 }

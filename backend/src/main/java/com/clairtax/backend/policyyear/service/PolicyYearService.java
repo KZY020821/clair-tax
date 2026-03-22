@@ -19,6 +19,7 @@ public class PolicyYearService {
 
     public List<PolicyYearResponse> getPolicyYears() {
         return policyYearRepository.findAllByOrderByYearDesc().stream()
+                .filter(policyYear -> "published".equals(policyYear.getStatus()))
                 .map(policyYear -> new PolicyYearResponse(
                         policyYear.getId(),
                         policyYear.getYear(),

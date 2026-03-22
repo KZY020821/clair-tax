@@ -22,10 +22,28 @@ const moneyValueSchema = numericValueSchema.pipe(z.number().nonnegative());
 const reliefCategoryWireSchema = z
   .object({
     id: z.string().uuid(),
+    code: z.string().min(1).optional(),
     name: z.string().min(1),
     description: z.string().min(1),
+    section: z.string().min(1).optional(),
+    inputType: z.string().min(1).optional(),
+    input_type: z.string().min(1).optional(),
+    unitAmount: moneyValueSchema.nullable().optional(),
+    unit_amount: moneyValueSchema.nullable().optional(),
     maxAmount: moneyValueSchema.optional(),
     max_amount: moneyValueSchema.optional(),
+    displayOrder: z.number().int().optional(),
+    display_order: z.number().int().optional(),
+    groupCode: z.string().min(1).nullable().optional(),
+    group_code: z.string().min(1).nullable().optional(),
+    groupMaxAmount: moneyValueSchema.nullable().optional(),
+    group_max_amount: moneyValueSchema.nullable().optional(),
+    exclusiveGroupCode: z.string().min(1).nullable().optional(),
+    exclusive_group_code: z.string().min(1).nullable().optional(),
+    requiresCategoryCode: z.string().min(1).nullable().optional(),
+    requires_category_code: z.string().min(1).nullable().optional(),
+    autoApply: z.boolean().optional(),
+    auto_apply: z.boolean().optional(),
     requiresReceipt: z.boolean().optional(),
     requires_receipt: z.boolean().optional(),
   })
@@ -40,10 +58,22 @@ const reliefCategoryWireSchema = z
 
 const reliefCategorySchema = reliefCategoryWireSchema.transform((value) => ({
   id: value.id,
+  code: value.code ?? value.name.toLowerCase().replace(/\s+/g, "_"),
   name: value.name,
   description: value.description,
+  section: value.section ?? "identity",
+  inputType: value.inputType ?? value.input_type ?? "amount",
+  unitAmount: value.unitAmount ?? value.unit_amount,
   maxAmount: value.maxAmount ?? value.max_amount ?? 0,
-  requiresReceipt: value.requiresReceipt ?? value.requires_receipt,
+  displayOrder: value.displayOrder ?? value.display_order ?? 0,
+  groupCode: value.groupCode ?? value.group_code ?? null,
+  groupMaxAmount: value.groupMaxAmount ?? value.group_max_amount ?? null,
+  exclusiveGroupCode:
+    value.exclusiveGroupCode ?? value.exclusive_group_code ?? null,
+  requiresCategoryCode:
+    value.requiresCategoryCode ?? value.requires_category_code ?? null,
+  autoApply: value.autoApply ?? value.auto_apply ?? false,
+  requiresReceipt: value.requiresReceipt ?? value.requires_receipt ?? false,
 }));
 
 const policyResponseWireSchema = z
@@ -75,8 +105,13 @@ const calculatorResponseSchema = z.object({
   policyYear: z.number().int(),
   grossIncome: moneyValueSchema,
   totalRelief: moneyValueSchema,
+  taxableIncome: moneyValueSchema.optional(),
   chargeableIncome: moneyValueSchema,
   taxBreakdown: z.array(taxBreakdownRowSchema),
+  taxAmount: moneyValueSchema,
+  taxRebate: moneyValueSchema,
+  zakat: moneyValueSchema,
+  taxYouShouldPay: moneyValueSchema,
   totalTaxPayable: moneyValueSchema,
 });
 
@@ -88,7 +123,9 @@ const policyResponseSchema = policyResponseWireSchema.transform((value) => ({
   id: value.id,
   year: value.year,
   status: value.status,
-  reliefCategories: value.reliefCategories ?? value.relief_categories ?? [],
+  reliefCategories: (value.reliefCategories ?? value.relief_categories ?? []).sort(
+    (left, right) => left.displayOrder - right.displayOrder,
+  ),
 }));
 
 export type ReliefCategory = z.infer<typeof reliefCategorySchema>;
@@ -96,13 +133,18 @@ export type PolicyResponse = z.infer<typeof policyResponseSchema>;
 export type TaxBreakdownRow = z.infer<typeof taxBreakdownRowSchema>;
 export type CalculatorResponse = z.infer<typeof calculatorResponseSchema>;
 
+export type ReliefClaimPayload = {
+  reliefCategoryId: string;
+  claimedAmount?: number;
+  quantity?: number;
+  selected?: boolean;
+};
+
 export type CalculatorRequest = {
   policyYear: number;
   grossIncome: number;
-  selectedReliefs: {
-    reliefCategoryId: string;
-    claimedAmount: number;
-  }[];
+  zakat?: number;
+  selectedReliefs: ReliefClaimPayload[];
 };
 
 async function getApiErrorMessage(

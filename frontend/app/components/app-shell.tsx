@@ -8,6 +8,7 @@ import { fetchPolicyYears } from "../lib/policy-years";
 
 type AppShellProps = Readonly<{
   children: ReactNode;
+  currentYear: number;
 }>;
 
 type IconProps = SVGProps<SVGSVGElement>;
@@ -99,9 +100,8 @@ function FooterTextLink({
   );
 }
 
-export default function AppShell({ children }: AppShellProps) {
+export default function AppShell({ children, currentYear }: AppShellProps) {
   const pathname = usePathname();
-  const currentYear = new Date().getFullYear();
   const policyYearsQuery = useQuery({
     queryKey: ["policy-years"],
     queryFn: fetchPolicyYears,

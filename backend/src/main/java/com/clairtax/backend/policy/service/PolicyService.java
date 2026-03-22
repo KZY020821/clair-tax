@@ -36,7 +36,7 @@ public class PolicyService {
                 ));
 
         List<PolicyReliefCategoryResponse> reliefCategories = reliefCategoryRepository
-                .findAllByPolicyYearIdOrderByNameAsc(policyYear.getId())
+                .findAllByPolicyYearIdOrderByDisplayOrderAscNameAsc(policyYear.getId())
                 .stream()
                 .map(this::toReliefCategoryResponse)
                 .toList();
@@ -52,9 +52,19 @@ public class PolicyService {
     private PolicyReliefCategoryResponse toReliefCategoryResponse(ReliefCategory reliefCategory) {
         return new PolicyReliefCategoryResponse(
                 reliefCategory.getId(),
+                reliefCategory.getCode(),
                 reliefCategory.getName(),
                 reliefCategory.getDescription(),
+                reliefCategory.getSection(),
+                reliefCategory.getInputType(),
+                reliefCategory.getUnitAmount(),
                 reliefCategory.getMaxAmount(),
+                reliefCategory.getDisplayOrder(),
+                reliefCategory.getGroupCode(),
+                reliefCategory.getGroupMaxAmount(),
+                reliefCategory.getExclusiveGroupCode(),
+                reliefCategory.getRequiresCategoryCode(),
+                reliefCategory.isAutoApply(),
                 reliefCategory.isRequiresReceipt()
         );
     }

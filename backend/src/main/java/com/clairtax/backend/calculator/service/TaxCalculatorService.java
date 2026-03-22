@@ -18,13 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 @Profile("!local")
@@ -32,8 +29,9 @@ import java.util.stream.Collectors;
 public class TaxCalculatorService {
 
     private static final BigDecimal ZERO = new BigDecimal("0.00");
-    private static final BigDecimal ONE_CENT = new BigDecimal("0.01");
     private static final BigDecimal HUNDRED = new BigDecimal("100");
+    private static final BigDecimal REBATE_LIMIT = new BigDecimal("35000.00");
+    private static final BigDecimal INDIVIDUAL_REBATE = new BigDecimal("400.00");
 
     private final PolicyYearRepository policyYearRepository;
     private final ReliefCategoryRepository reliefCategoryRepository;
@@ -56,14 +54,29 @@ public class TaxCalculatorService {
                 ));
 
         BigDecimal grossIncome = toMoney(request.grossIncome());
-        Map<UUID, ReliefCategory> reliefCategories = loadReliefCategories(
-                policyYear.getId(),
+        BigDecimal zakat = toMoney(request.zakat());
+
+        List<ReliefCategory> reliefCategories = reliefCategoryRepository
+                .findAllByPolicyYearIdOrderByDisplayOrderAscNameAsc(policyYear.getId());
+
+        if (reliefCategories.isEmpty()) {
+            throw new CalculatorValidationException(
+                    "No relief categories configured for policy year " + request.policyYear()
+            );
+        }
+
+        Map<UUID, ReliefCategory> reliefCategoriesById = toReliefCategoryMap(
+                reliefCategories,
                 request.policyYear(),
                 request.selectedReliefs()
         );
+        Map<String, BigDecimal> activeReliefAmounts = calculateActiveReliefAmounts(
+                reliefCategories,
+                request.selectedReliefs()
+        );
 
-        BigDecimal totalRelief = calculateTotalRelief(request.selectedReliefs(), reliefCategories);
-        BigDecimal chargeableIncome = toMoney(grossIncome.subtract(totalRelief).max(BigDecimal.ZERO));
+        BigDecimal totalRelief = calculateTotalRelief(reliefCategories, activeReliefAmounts);
+        BigDecimal chargeableIncome = toMoney(grossIncome.subtract(totalRelief).max(ZERO));
 
         List<TaxBracket> taxBrackets = taxBracketRepository.findAllByPolicyYearIdOrderByMinIncomeAsc(policyYear.getId());
         if (taxBrackets.isEmpty()) {
@@ -73,65 +86,221 @@ public class TaxCalculatorService {
         }
 
         List<TaxBreakdownResponse> taxBreakdown = calculateTaxBreakdown(chargeableIncome, taxBrackets);
-        BigDecimal totalTaxPayable = taxBreakdown.stream()
+        BigDecimal taxAmount = taxBreakdown.stream()
                 .map(TaxBreakdownResponse::taxForBracket)
-                .reduce(ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
+                .reduce(ZERO, BigDecimal::add);
+        BigDecimal taxRebate = calculateTaxRebate(chargeableIncome, activeReliefAmounts);
+        BigDecimal taxYouShouldPay = toMoney(taxAmount.subtract(taxRebate).subtract(zakat).max(ZERO));
 
         return new CalculateTaxResponse(
                 request.policyYear(),
                 grossIncome,
                 totalRelief,
                 chargeableIncome,
+                chargeableIncome,
                 taxBreakdown,
-                totalTaxPayable
+                toMoney(taxAmount),
+                taxRebate,
+                zakat,
+                taxYouShouldPay,
+                taxYouShouldPay
         );
     }
 
-    private Map<UUID, ReliefCategory> loadReliefCategories(
-            UUID policyYearId,
+    private Map<UUID, ReliefCategory> toReliefCategoryMap(
+            List<ReliefCategory> reliefCategories,
             Integer policyYear,
             List<ReliefClaimRequest> selectedReliefs
     ) {
-        Set<UUID> requestedIds = selectedReliefs.stream()
-                .map(ReliefClaimRequest::reliefCategoryId)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<UUID, ReliefCategory> reliefCategoriesById = reliefCategories.stream()
+                .collect(LinkedHashMap::new, (map, category) -> map.put(category.getId(), category), Map::putAll);
 
-        if (requestedIds.isEmpty()) {
-            return Map.of();
+        for (ReliefClaimRequest selectedRelief : selectedReliefs) {
+            if (!reliefCategoriesById.containsKey(selectedRelief.reliefCategoryId())) {
+                throw new CalculatorValidationException(
+                        "Relief category " + selectedRelief.reliefCategoryId()
+                                + " does not belong to policy year " + policyYear
+                );
+            }
         }
 
-        Map<UUID, ReliefCategory> reliefCategories = reliefCategoryRepository
-                .findAllByPolicyYearIdAndIdIn(policyYearId, requestedIds)
-                .stream()
-                .collect(Collectors.toMap(ReliefCategory::getId, Function.identity()));
+        return reliefCategoriesById;
+    }
 
-        List<UUID> invalidIds = requestedIds.stream()
-                .filter(requestedId -> !reliefCategories.containsKey(requestedId))
-                .toList();
+    private Map<String, BigDecimal> calculateActiveReliefAmounts(
+            List<ReliefCategory> reliefCategories,
+            List<ReliefClaimRequest> selectedReliefs
+    ) {
+        Map<UUID, ReliefClaimRequest> selectedReliefsById = new LinkedHashMap<>();
+        for (ReliefClaimRequest selectedRelief : selectedReliefs) {
+            ReliefClaimRequest previous = selectedReliefsById.putIfAbsent(
+                    selectedRelief.reliefCategoryId(),
+                    selectedRelief
+            );
 
-        if (!invalidIds.isEmpty()) {
+            if (previous != null) {
+                throw new CalculatorValidationException(
+                        "Relief category " + selectedRelief.reliefCategoryId() + " was submitted more than once"
+                );
+            }
+        }
+
+        Map<String, BigDecimal> activeReliefAmounts = new LinkedHashMap<>();
+        Map<String, Integer> exclusiveSelections = new LinkedHashMap<>();
+
+        for (ReliefCategory reliefCategory : reliefCategories) {
+            ReliefClaimRequest selectedRelief = selectedReliefsById.get(reliefCategory.getId());
+            BigDecimal rawReliefAmount = calculateRawReliefAmount(reliefCategory, selectedRelief);
+
+            if (rawReliefAmount.compareTo(ZERO) > 0) {
+                activeReliefAmounts.put(reliefCategory.getCode(), rawReliefAmount);
+            }
+
+            if (reliefCategory.getExclusiveGroupCode() != null && rawReliefAmount.compareTo(ZERO) > 0) {
+                exclusiveSelections.merge(reliefCategory.getExclusiveGroupCode(), 1, Integer::sum);
+            }
+        }
+
+        validateRequiredCategories(reliefCategories, activeReliefAmounts);
+        validateExclusiveSelections(exclusiveSelections);
+
+        return activeReliefAmounts;
+    }
+
+    private void validateRequiredCategories(
+            List<ReliefCategory> reliefCategories,
+            Map<String, BigDecimal> activeReliefAmounts
+    ) {
+        for (ReliefCategory reliefCategory : reliefCategories) {
+            if (reliefCategory.getRequiresCategoryCode() == null) {
+                continue;
+            }
+
+            BigDecimal selectedAmount = activeReliefAmounts.getOrDefault(reliefCategory.getCode(), ZERO);
+            if (selectedAmount.compareTo(ZERO) <= 0) {
+                continue;
+            }
+
+            BigDecimal requiredAmount = activeReliefAmounts.getOrDefault(
+                    reliefCategory.getRequiresCategoryCode(),
+                    ZERO
+            );
+            if (requiredAmount.compareTo(ZERO) <= 0) {
+                throw new CalculatorValidationException(
+                        "Relief category " + reliefCategory.getName()
+                                + " requires " + reliefCategory.getRequiresCategoryCode()
+                );
+            }
+        }
+    }
+
+    private void validateExclusiveSelections(Map<String, Integer> exclusiveSelections) {
+        exclusiveSelections.forEach((exclusiveGroup, selectedCount) -> {
+            if (selectedCount > 1) {
+                throw new CalculatorValidationException(
+                        "Only one option can be selected for " + exclusiveGroup
+                );
+            }
+        });
+    }
+
+    private BigDecimal calculateRawReliefAmount(
+            ReliefCategory reliefCategory,
+            ReliefClaimRequest selectedRelief
+    ) {
+        return switch (reliefCategory.getInputType()) {
+            case "fixed" -> calculateFixedRelief(reliefCategory, selectedRelief);
+            case "count" -> calculateCountRelief(reliefCategory, selectedRelief);
+            default -> calculateAmountRelief(reliefCategory, selectedRelief);
+        };
+    }
+
+    private BigDecimal calculateFixedRelief(ReliefCategory reliefCategory, ReliefClaimRequest selectedRelief) {
+        boolean selected = reliefCategory.isAutoApply()
+                || (selectedRelief != null && Boolean.TRUE.equals(selectedRelief.selected()));
+
+        if (!selected) {
+            return ZERO;
+        }
+
+        BigDecimal fixedAmount = reliefCategory.getUnitAmount() != null
+                ? reliefCategory.getUnitAmount()
+                : reliefCategory.getMaxAmount();
+
+        return toMoney(fixedAmount);
+    }
+
+    private BigDecimal calculateCountRelief(ReliefCategory reliefCategory, ReliefClaimRequest selectedRelief) {
+        if (selectedRelief == null || selectedRelief.quantity() == null || selectedRelief.quantity() == 0) {
+            return ZERO;
+        }
+
+        if (reliefCategory.getUnitAmount() == null) {
             throw new CalculatorValidationException(
-                    "Relief categories " + invalidIds + " do not belong to policy year " + policyYear
+                    "Relief category " + reliefCategory.getName() + " is missing its unit amount"
             );
         }
 
-        return reliefCategories;
+        return toMoney(reliefCategory.getUnitAmount().multiply(BigDecimal.valueOf(selectedRelief.quantity())));
+    }
+
+    private BigDecimal calculateAmountRelief(ReliefCategory reliefCategory, ReliefClaimRequest selectedRelief) {
+        if (selectedRelief == null || selectedRelief.claimedAmount() == null) {
+            return ZERO;
+        }
+
+        BigDecimal claimedAmount = toMoney(selectedRelief.claimedAmount());
+        return claimedAmount.min(toMoney(reliefCategory.getMaxAmount()));
     }
 
     private BigDecimal calculateTotalRelief(
-            List<ReliefClaimRequest> selectedReliefs,
-            Map<UUID, ReliefCategory> reliefCategories
+            List<ReliefCategory> reliefCategories,
+            Map<String, BigDecimal> activeReliefAmounts
     ) {
         BigDecimal totalRelief = ZERO;
-        for (ReliefClaimRequest selectedRelief : selectedReliefs) {
-            ReliefCategory reliefCategory = reliefCategories.get(selectedRelief.reliefCategoryId());
-            BigDecimal claimedAmount = toMoney(selectedRelief.claimedAmount());
-            BigDecimal maxAllowed = toMoney(reliefCategory.getMaxAmount());
-            totalRelief = totalRelief.add(claimedAmount.min(maxAllowed));
+        Map<String, BigDecimal> groupedReliefAmounts = new LinkedHashMap<>();
+        Map<String, BigDecimal> groupCaps = new LinkedHashMap<>();
+
+        for (ReliefCategory reliefCategory : reliefCategories) {
+            BigDecimal reliefAmount = activeReliefAmounts.getOrDefault(reliefCategory.getCode(), ZERO);
+            if (reliefAmount.compareTo(ZERO) <= 0) {
+                continue;
+            }
+
+            if (reliefCategory.getGroupCode() == null) {
+                totalRelief = totalRelief.add(reliefAmount);
+                continue;
+            }
+
+            groupedReliefAmounts.merge(reliefCategory.getGroupCode(), reliefAmount, BigDecimal::add);
+            if (reliefCategory.getGroupMaxAmount() != null) {
+                groupCaps.putIfAbsent(reliefCategory.getGroupCode(), reliefCategory.getGroupMaxAmount());
+            }
         }
 
-        return totalRelief.setScale(2, RoundingMode.HALF_UP);
+        for (Map.Entry<String, BigDecimal> groupedRelief : groupedReliefAmounts.entrySet()) {
+            BigDecimal groupCap = groupCaps.get(groupedRelief.getKey());
+            BigDecimal groupedAmount = groupedRelief.getValue();
+            totalRelief = totalRelief.add(groupCap == null ? groupedAmount : groupedAmount.min(groupCap));
+        }
+
+        return toMoney(totalRelief);
+    }
+
+    private BigDecimal calculateTaxRebate(
+            BigDecimal chargeableIncome,
+            Map<String, BigDecimal> activeReliefAmounts
+    ) {
+        if (chargeableIncome.compareTo(REBATE_LIMIT) > 0) {
+            return ZERO;
+        }
+
+        BigDecimal taxRebate = INDIVIDUAL_REBATE;
+        if (activeReliefAmounts.getOrDefault("spouse_relief", ZERO).compareTo(ZERO) > 0) {
+            taxRebate = taxRebate.add(INDIVIDUAL_REBATE);
+        }
+
+        return toMoney(taxRebate);
     }
 
     private List<TaxBreakdownResponse> calculateTaxBreakdown(
@@ -151,9 +320,9 @@ public class TaxCalculatorService {
         return new TaxBreakdownResponse(
                 toMoney(taxBracket.getMinIncome()),
                 taxBracket.getMaxIncome() == null ? null : toMoney(taxBracket.getMaxIncome()),
-                taxBracket.getTaxRate(),
+                toMoney(taxBracket.getTaxRate()),
                 taxableAmount,
-                taxForBracket
+                toMoney(taxForBracket)
         );
     }
 
@@ -161,15 +330,12 @@ public class TaxCalculatorService {
         BigDecimal upperBound = taxBracket.getMaxIncome() == null
                 ? chargeableIncome
                 : chargeableIncome.min(taxBracket.getMaxIncome());
-        BigDecimal lowerThresholdExclusive = taxBracket.getMinIncome().compareTo(BigDecimal.ZERO) > 0
-                ? taxBracket.getMinIncome().subtract(ONE_CENT)
-                : BigDecimal.ZERO;
 
-        if (upperBound.compareTo(lowerThresholdExclusive) <= 0) {
+        if (upperBound.compareTo(taxBracket.getMinIncome()) <= 0) {
             return ZERO;
         }
 
-        return toMoney(upperBound.subtract(lowerThresholdExclusive));
+        return toMoney(upperBound.subtract(taxBracket.getMinIncome()));
     }
 
     private BigDecimal toMoney(BigDecimal value) {

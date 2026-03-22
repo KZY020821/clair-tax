@@ -23,9 +23,8 @@ class PolicyControllerIntegrationTest {
 
     private static final UUID POLICY_YEAR_2025_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
     private static final UUID POLICY_YEAR_2026_ID = UUID.fromString("11111111-1111-4111-8111-111111111112");
-    private static final UUID SELF_RELIEF_2025_ID = UUID.fromString("44444444-4444-4444-8444-444444444441");
-    private static final UUID LIFESTYLE_RELIEF_2025_ID = UUID.fromString("44444444-4444-4444-8444-444444444442");
-    private static final UUID DIGITAL_LEARNING_2026_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
+    private static final UUID SELF_RELIEF_ID = UUID.fromString("44444444-4444-4444-8444-444444444441");
+    private static final UUID SPOUSE_RELIEF_ID = UUID.fromString("44444444-4444-4444-8444-444444444442");
 
     @Autowired
     private MockMvc mockMvc;
@@ -48,64 +47,67 @@ class PolicyControllerIntegrationTest {
                 POLICY_YEAR_2026_ID, 2026, "draft"
         );
 
-        jdbcTemplate.update(
-                """
-                INSERT INTO relief_categories
-                    (id, policy_year_id, name, description, max_amount, requires_receipt)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                SELF_RELIEF_2025_ID,
+        insertRelief(
+                SELF_RELIEF_ID,
                 POLICY_YEAR_2025_ID,
-                "Self and Dependent",
-                "Baseline relief for the taxpayer and dependents.",
+                "Individual and dependent relatives",
+                "Automatic resident self relief.",
                 "9000.00",
-                false
+                "individual",
+                false,
+                "self_and_dependents",
+                "identity",
+                "fixed",
+                "9000.00",
+                10,
+                null,
+                null,
+                null,
+                null,
+                true
         );
-        jdbcTemplate.update(
-                """
-                INSERT INTO relief_categories
-                    (id, policy_year_id, name, description, max_amount, requires_receipt)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                LIFESTYLE_RELIEF_2025_ID,
+        insertRelief(
+                SPOUSE_RELIEF_ID,
                 POLICY_YEAR_2025_ID,
-                "Lifestyle",
-                "Books, devices, sports equipment, and internet subscriptions.",
-                "2500.00",
-                true
-        );
-        jdbcTemplate.update(
-                """
-                INSERT INTO relief_categories
-                    (id, policy_year_id, name, description, max_amount, requires_receipt)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                DIGITAL_LEARNING_2026_ID,
-                POLICY_YEAR_2026_ID,
-                "Digital Learning",
-                "Draft relief for work and study-related devices.",
-                "3000.00",
-                true
+                "Spouse relief",
+                "Fixed spouse relief.",
+                "4000.00",
+                "family",
+                false,
+                "spouse_relief",
+                "family",
+                "fixed",
+                "4000.00",
+                20,
+                "spouse_relief_cap",
+                "4000.00",
+                null,
+                null,
+                false
         );
     }
 
     @Test
-    void returnsPolicyYearWithReliefCategories() throws Exception {
+    void returnsPolicyYearWithExtendedReliefMetadata() throws Exception {
         mockMvc.perform(get("/api/policies/2025"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(POLICY_YEAR_2025_ID.toString()))
                 .andExpect(jsonPath("$.year").value(2025))
                 .andExpect(jsonPath("$.status").value("published"))
                 .andExpect(jsonPath("$.reliefCategories", hasSize(2)))
-                .andExpect(jsonPath("$.reliefCategories[0].id").value(LIFESTYLE_RELIEF_2025_ID.toString()))
-                .andExpect(jsonPath("$.reliefCategories[0].name").value("Lifestyle"))
-                .andExpect(jsonPath("$.reliefCategories[0].description").value("Books, devices, sports equipment, and internet subscriptions."))
-                .andExpect(jsonPath("$.reliefCategories[0].maxAmount").value(2500.00))
-                .andExpect(jsonPath("$.reliefCategories[0].requiresReceipt").value(true))
-                .andExpect(jsonPath("$.reliefCategories[1].id").value(SELF_RELIEF_2025_ID.toString()))
-                .andExpect(jsonPath("$.reliefCategories[1].name").value("Self and Dependent"))
-                .andExpect(jsonPath("$.reliefCategories[1].maxAmount").value(9000.00))
-                .andExpect(jsonPath("$.reliefCategories[1].requiresReceipt").value(false));
+                .andExpect(jsonPath("$.reliefCategories[0].id").value(SELF_RELIEF_ID.toString()))
+                .andExpect(jsonPath("$.reliefCategories[0].code").value("self_and_dependents"))
+                .andExpect(jsonPath("$.reliefCategories[0].name").value("Individual and dependent relatives"))
+                .andExpect(jsonPath("$.reliefCategories[0].section").value("identity"))
+                .andExpect(jsonPath("$.reliefCategories[0].inputType").value("fixed"))
+                .andExpect(jsonPath("$.reliefCategories[0].unitAmount").value(9000.00))
+                .andExpect(jsonPath("$.reliefCategories[0].displayOrder").value(10))
+                .andExpect(jsonPath("$.reliefCategories[0].autoApply").value(true))
+                .andExpect(jsonPath("$.reliefCategories[0].requiresReceipt").value(false))
+                .andExpect(jsonPath("$.reliefCategories[1].id").value(SPOUSE_RELIEF_ID.toString()))
+                .andExpect(jsonPath("$.reliefCategories[1].groupCode").value("spouse_relief_cap"))
+                .andExpect(jsonPath("$.reliefCategories[1].groupMaxAmount").value(4000.00))
+                .andExpect(jsonPath("$.reliefCategories[1].autoApply").value(false));
     }
 
     @Test
@@ -114,5 +116,66 @@ class PolicyControllerIntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("Policy year 2030 not found"));
+    }
+
+    private void insertRelief(
+            UUID id,
+            UUID policyYearId,
+            String name,
+            String description,
+            String maxAmount,
+            String type,
+            boolean requiresReceipt,
+            String code,
+            String section,
+            String inputType,
+            String unitAmount,
+            int displayOrder,
+            String groupCode,
+            String groupMaxAmount,
+            String exclusiveGroupCode,
+            String requiresCategoryCode,
+            boolean autoApply
+    ) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO relief_categories (
+                    id,
+                    policy_year_id,
+                    name,
+                    description,
+                    max_amount,
+                    type,
+                    requires_receipt,
+                    code,
+                    section,
+                    input_type,
+                    unit_amount,
+                    display_order,
+                    group_code,
+                    group_max_amount,
+                    exclusive_group_code,
+                    requires_category_code,
+                    auto_apply
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                id,
+                policyYearId,
+                name,
+                description,
+                maxAmount,
+                type,
+                requiresReceipt,
+                code,
+                section,
+                inputType,
+                unitAmount,
+                displayOrder,
+                groupCode,
+                groupMaxAmount,
+                exclusiveGroupCode,
+                requiresCategoryCode,
+                autoApply
+        );
     }
 }

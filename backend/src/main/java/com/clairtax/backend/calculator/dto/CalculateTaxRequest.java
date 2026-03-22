@@ -12,10 +12,12 @@ import java.util.List;
 public record CalculateTaxRequest(
         @NotNull Integer policyYear,
         @NotNull @DecimalMin("0.00") BigDecimal grossIncome,
+        @DecimalMin("0.00") BigDecimal zakat,
         List<@Valid ReliefClaimRequest> selectedReliefs
 ) {
 
     public CalculateTaxRequest {
+        zakat = zakat == null ? BigDecimal.ZERO : zakat;
         selectedReliefs = selectedReliefs == null
                 ? List.of()
                 : Collections.unmodifiableList(new ArrayList<>(selectedReliefs));
