@@ -12,6 +12,7 @@ public record PolicyReliefCategoryResponse(
         String inputType,
         BigDecimal unitAmount,
         BigDecimal maxAmount,
+        Integer maxQuantity,
         Integer displayOrder,
         String groupCode,
         BigDecimal groupMaxAmount,

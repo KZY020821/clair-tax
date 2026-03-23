@@ -241,6 +241,14 @@ public class TaxCalculatorService {
             );
         }
 
+        if (reliefCategory.getMaxQuantity() != null
+                && selectedRelief.quantity() > reliefCategory.getMaxQuantity()) {
+            throw new CalculatorValidationException(
+                    "Relief category " + reliefCategory.getName()
+                            + " cannot exceed quantity " + reliefCategory.getMaxQuantity()
+            );
+        }
+
         return toMoney(reliefCategory.getUnitAmount().multiply(BigDecimal.valueOf(selectedRelief.quantity())));
     }
 

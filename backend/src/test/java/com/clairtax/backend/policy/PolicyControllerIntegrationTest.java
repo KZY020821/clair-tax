@@ -25,6 +25,7 @@ class PolicyControllerIntegrationTest {
     private static final UUID POLICY_YEAR_2026_ID = UUID.fromString("11111111-1111-4111-8111-111111111112");
     private static final UUID SELF_RELIEF_ID = UUID.fromString("44444444-4444-4444-8444-444444444441");
     private static final UUID SPOUSE_RELIEF_ID = UUID.fromString("44444444-4444-4444-8444-444444444442");
+    private static final UUID CHILD_RELIEF_ID = UUID.fromString("44444444-4444-4444-8444-444444444443");
 
     @Autowired
     private MockMvc mockMvc;
@@ -59,6 +60,7 @@ class PolicyControllerIntegrationTest {
                 "identity",
                 "fixed",
                 "9000.00",
+                null,
                 10,
                 null,
                 null,
@@ -78,9 +80,30 @@ class PolicyControllerIntegrationTest {
                 "family",
                 "fixed",
                 "4000.00",
+                null,
                 20,
                 "spouse_relief_cap",
                 "4000.00",
+                null,
+                null,
+                false
+        );
+        insertRelief(
+                CHILD_RELIEF_ID,
+                POLICY_YEAR_2025_ID,
+                "Child below 18 years old",
+                "Relief per child below 18.",
+                "2000.00",
+                "family",
+                false,
+                "child_below_18",
+                "family",
+                "count",
+                "2000.00",
+                null,
+                30,
+                null,
+                null,
                 null,
                 null,
                 false
@@ -94,20 +117,24 @@ class PolicyControllerIntegrationTest {
                 .andExpect(jsonPath("$.id").value(POLICY_YEAR_2025_ID.toString()))
                 .andExpect(jsonPath("$.year").value(2025))
                 .andExpect(jsonPath("$.status").value("published"))
-                .andExpect(jsonPath("$.reliefCategories", hasSize(2)))
+                .andExpect(jsonPath("$.reliefCategories", hasSize(3)))
                 .andExpect(jsonPath("$.reliefCategories[0].id").value(SELF_RELIEF_ID.toString()))
                 .andExpect(jsonPath("$.reliefCategories[0].code").value("self_and_dependents"))
                 .andExpect(jsonPath("$.reliefCategories[0].name").value("Individual and dependent relatives"))
                 .andExpect(jsonPath("$.reliefCategories[0].section").value("identity"))
                 .andExpect(jsonPath("$.reliefCategories[0].inputType").value("fixed"))
                 .andExpect(jsonPath("$.reliefCategories[0].unitAmount").value(9000.00))
+                .andExpect(jsonPath("$.reliefCategories[0].maxQuantity").isEmpty())
                 .andExpect(jsonPath("$.reliefCategories[0].displayOrder").value(10))
                 .andExpect(jsonPath("$.reliefCategories[0].autoApply").value(true))
                 .andExpect(jsonPath("$.reliefCategories[0].requiresReceipt").value(false))
                 .andExpect(jsonPath("$.reliefCategories[1].id").value(SPOUSE_RELIEF_ID.toString()))
                 .andExpect(jsonPath("$.reliefCategories[1].groupCode").value("spouse_relief_cap"))
                 .andExpect(jsonPath("$.reliefCategories[1].groupMaxAmount").value(4000.00))
-                .andExpect(jsonPath("$.reliefCategories[1].autoApply").value(false));
+                .andExpect(jsonPath("$.reliefCategories[1].autoApply").value(false))
+                .andExpect(jsonPath("$.reliefCategories[2].id").value(CHILD_RELIEF_ID.toString()))
+                .andExpect(jsonPath("$.reliefCategories[2].inputType").value("count"))
+                .andExpect(jsonPath("$.reliefCategories[2].maxQuantity").isEmpty());
     }
 
     @Test
@@ -130,6 +157,7 @@ class PolicyControllerIntegrationTest {
             String section,
             String inputType,
             String unitAmount,
+            Integer maxQuantity,
             int displayOrder,
             String groupCode,
             String groupMaxAmount,
@@ -151,13 +179,14 @@ class PolicyControllerIntegrationTest {
                     section,
                     input_type,
                     unit_amount,
+                    max_quantity,
                     display_order,
                     group_code,
                     group_max_amount,
                     exclusive_group_code,
                     requires_category_code,
                     auto_apply
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id,
                 policyYearId,
@@ -170,6 +199,7 @@ class PolicyControllerIntegrationTest {
                 section,
                 inputType,
                 unitAmount,
+                maxQuantity,
                 displayOrder,
                 groupCode,
                 groupMaxAmount,

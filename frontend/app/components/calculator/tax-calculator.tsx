@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import CalculationResult from "./calculation-result";
 import { formatCurrency } from "../../lib/format-currency";
 import { fetchPolicyYears } from "../../lib/policy-years";
@@ -70,6 +70,172 @@ const sectionContent: Record<
       "First-home loan interest plus eligible green and household sustainability reliefs.",
   },
 };
+
+type HouseholdStatus = "single" | "married" | "previously_married";
+
+const householdStatusOptions: ReadonlyArray<{
+  value: HouseholdStatus;
+  label: string;
+  detail: string;
+}> = [
+  {
+    value: "single",
+    label: "Single",
+    detail: "Hide spouse, former-spouse, and child reliefs until they are relevant.",
+  },
+  {
+    value: "married",
+    label: "Married",
+    detail: "Show spouse-related reliefs and let you opt into child-related claims.",
+  },
+  {
+    value: "previously_married",
+    label: "Previously married",
+    detail: "Keep former-spouse items available and show child reliefs only if needed.",
+  },
+];
+
+const childReliefCodes = new Set([
+  "breastfeeding_equipment",
+  "childcare_fees",
+  "sspn_net_savings",
+  "child_below_18",
+  "child_above_18_non_tertiary",
+  "child_higher_education",
+  "disabled_child",
+  "disabled_child_higher_education",
+]);
+
+const marriedOnlyReliefCodes = new Set(["spouse_relief", "disabled_spouse"]);
+const previouslyMarriedReliefCodes = new Set(["alimony_paid"]);
+
+function shouldRenderCategoryForHousehold(
+  category: ReliefCategory,
+  householdStatus: HouseholdStatus | null,
+  hasDependentChildren: boolean | null,
+): boolean {
+  if (marriedOnlyReliefCodes.has(category.code)) {
+    return householdStatus === "married";
+  }
+
+  if (previouslyMarriedReliefCodes.has(category.code)) {
+    return householdStatus === "previously_married";
+  }
+
+  if (childReliefCodes.has(category.code)) {
+    return hasDependentChildren === true;
+  }
+
+  return true;
+}
+
+function SituationChoice({
+  name,
+  value,
+  label,
+  detail,
+  checked,
+  onChange,
+}: Readonly<{
+  name: string;
+  value: string;
+  label: string;
+  detail: string;
+  checked: boolean;
+  onChange: (nextValue: string) => void;
+}>) {
+  return (
+    <label
+      className={`rounded-card border p-4 transition ${
+        checked
+          ? "border-brand-lineStrong bg-brand-white shadow-panel"
+          : "border-brand-line bg-brand-ice hover:border-brand-lineStrong"
+      }`}
+    >
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        onChange={(event) => onChange(event.target.value)}
+        className="sr-only"
+      />
+      <span className="text-sm font-semibold text-brand-black">{label}</span>
+      <span className="mt-2 block text-sm leading-6 text-brand-muted">
+        {detail}
+      </span>
+    </label>
+  );
+}
+
+function AccordionChevron({ open }: Readonly<{ open: boolean }>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      className={`h-5 w-5 text-brand-black transition ${open ? "rotate-180" : ""}`}
+    >
+      <path
+        d="m7.5 10 4.5 4.5L16.5 10"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function AccordionSection({
+  section,
+  title,
+  detail,
+  itemCount,
+  isOpen,
+  onToggle,
+  children,
+}: Readonly<{
+  section: string;
+  title: string;
+  detail: string;
+  itemCount: number;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}>) {
+  return (
+    <section className="overflow-hidden rounded-card border border-brand-line bg-brand-white">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-start justify-between gap-4 px-5 py-5 text-left sm:px-6"
+      >
+        <div className="min-w-0">
+          <p className="app-eyebrow">{section.replaceAll("_", " ")}</p>
+          <h3 className="mt-3 text-2xl text-brand-black">{title}</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-brand-muted">
+            {detail}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          <span className={itemCount > 0 ? "app-pill-blue" : "app-pill"}>
+            {itemCount} shown
+          </span>
+          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-brand-line bg-brand-ice">
+            <AccordionChevron open={isOpen} />
+          </span>
+        </div>
+      </button>
+
+      {isOpen ? (
+        <div className="border-t border-brand-line px-5 py-5 sm:px-6">
+          {children}
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 function SummaryTile({
   label,
@@ -198,6 +364,11 @@ function CategoryField({
 }>) {
   const showSharedCap =
     category.groupCode && category.groupMaxAmount !== null && category.groupMaxAmount !== undefined;
+  const unitAmount = category.unitAmount;
+  const hasUnitAmount = unitAmount !== null && unitAmount !== undefined;
+  const showMoneyCapBadge = category.inputType !== "count";
+  const showCountLimitBadge =
+    category.inputType === "count" && category.maxQuantity !== null;
 
   return (
     <article
@@ -210,13 +381,18 @@ function CategoryField({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="app-pill-blue">Cap {formatCurrency(category.maxAmount)}</span>
-            {category.unitAmount !== null && category.unitAmount !== undefined ? (
+            {showMoneyCapBadge ? (
+              <span className="app-pill-blue">Cap {formatCurrency(category.maxAmount)}</span>
+            ) : null}
+            {hasUnitAmount ? (
               <span className="app-pill">
                 {category.inputType === "count"
-                  ? `${formatCurrency(category.unitAmount)} each`
-                  : `${formatCurrency(category.unitAmount)} fixed`}
+                  ? `${formatCurrency(unitAmount)} each`
+                  : `${formatCurrency(unitAmount)} fixed`}
               </span>
+            ) : null}
+            {showCountLimitBadge ? (
+              <span className="app-pill">Limit {category.maxQuantity}</span>
             ) : null}
             {category.requiresReceipt ? <span className="app-pill">Receipt based</span> : null}
             {showSharedCap ? (
@@ -298,6 +474,7 @@ function CategoryField({
             type="number"
             inputMode="numeric"
             min="0"
+            max={category.maxQuantity ?? undefined}
             step="1"
             value={countValue}
             disabled={disabled}
@@ -313,7 +490,9 @@ function CategoryField({
       ) : category.autoApply ? null : (
         <p className="app-help">
           {category.inputType === "count"
-            ? "Enter the number of qualifying dependants for this relief."
+            ? category.maxQuantity !== null
+              ? `Enter the number of qualifying dependants for this relief, up to ${category.maxQuantity}.`
+              : "Enter the number of qualifying dependants for this relief."
             : category.inputType === "fixed"
               ? "Tick this box only if you qualify for the fixed deduction."
               : "Enter only the eligible amount you want the backend to evaluate."}
@@ -327,6 +506,12 @@ export default function TaxCalculator() {
   const [selectedYear, setSelectedYear] = useState(DEFAULT_POLICY_YEAR);
   const [grossIncome, setGrossIncome] = useState("");
   const [zakat, setZakat] = useState("");
+  const [householdStatus, setHouseholdStatus] = useState<HouseholdStatus | null>(null);
+  const [hasDependentChildren, setHasDependentChildren] = useState<boolean | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    identity: true,
+    family: true,
+  });
   const [amountValues, setAmountValues] = useState<Record<string, string>>({});
   const [countValues, setCountValues] = useState<Record<string, string>>({});
   const [selectedValues, setSelectedValues] = useState<Record<string, boolean>>({});
@@ -354,9 +539,16 @@ export default function TaxCalculator() {
   ).sort((left, right) => left - right);
 
   const categories = policyQuery.data?.reliefCategories ?? [];
+  const situationEligibleCategories = categories.filter((category) =>
+    shouldRenderCategoryForHousehold(
+      category,
+      householdStatus,
+      hasDependentChildren,
+    ),
+  );
   const activeCodes = new Set<string>();
 
-  for (const category of categories) {
+  for (const category of situationEligibleCategories) {
     if (category.autoApply) {
       activeCodes.add(category.code);
       continue;
@@ -386,8 +578,15 @@ export default function TaxCalculator() {
     }
   }
 
+  const hasFamilySection = categories.some((category) => category.section === "family");
+  const visibleCategories = situationEligibleCategories.filter(
+    (category) =>
+      category.requiresCategoryCode === null ||
+      activeCodes.has(category.requiresCategoryCode),
+  );
+
   const categoryValidationMessages: Record<string, string | null> = {};
-  for (const category of categories) {
+  for (const category of visibleCategories) {
     if (category.inputType === "amount") {
       categoryValidationMessages[category.id] = getMoneyFieldError(
         amountValues[category.id] ?? "",
@@ -409,9 +608,13 @@ export default function TaxCalculator() {
   const sectionedCategories = sectionOrder
     .map((section) => ({
       section,
-      categories: categories.filter((category) => category.section === section),
+      categories: visibleCategories.filter((category) => category.section === section),
     }))
-    .filter((sectionGroup) => sectionGroup.categories.length > 0);
+    .filter(
+      (sectionGroup) =>
+        sectionGroup.categories.length > 0 ||
+        (sectionGroup.section === "family" && hasFamilySection),
+    );
 
   function handleYearChange(nextYearValue: string) {
     const nextYear = Number(nextYearValue);
@@ -429,6 +632,40 @@ export default function TaxCalculator() {
     calculationMutation.reset();
   }
 
+  function handleHouseholdStatusChange(nextValue: string) {
+    if (
+      nextValue !== "single" &&
+      nextValue !== "married" &&
+      nextValue !== "previously_married"
+    ) {
+      return;
+    }
+
+    setHouseholdStatus(nextValue);
+    if (nextValue === "single") {
+      setHasDependentChildren(false);
+    } else if (householdStatus === "single") {
+      setHasDependentChildren(null);
+    }
+    setFormError(null);
+  }
+
+  function handleDependentChildrenChange(nextValue: string) {
+    if (nextValue !== "yes" && nextValue !== "no") {
+      return;
+    }
+
+    setHasDependentChildren(nextValue === "yes");
+    setFormError(null);
+  }
+
+  function toggleSection(section: string) {
+    setExpandedSections((currentSections) => ({
+      ...currentSections,
+      [section]: !currentSections[section],
+    }));
+  }
+
   function buildPayload(): CalculatorRequest | null {
     const grossIncomeError = getGrossIncomeError(grossIncome);
     if (grossIncomeError) {
@@ -442,7 +679,7 @@ export default function TaxCalculator() {
       return null;
     }
 
-    const invalidCategory = categories.find(
+    const invalidCategory = visibleCategories.find(
       (category) => categoryValidationMessages[category.id],
     );
     if (invalidCategory) {
@@ -452,7 +689,7 @@ export default function TaxCalculator() {
 
     const selectedReliefs: CalculatorRequest["selectedReliefs"] = [];
 
-    for (const category of categories) {
+    for (const category of visibleCategories) {
       if (category.autoApply) {
         continue;
       }
@@ -524,39 +761,53 @@ export default function TaxCalculator() {
     policyYearsQuery.error instanceof Error
       ? policyYearsQuery.error.message
       : null;
+  const shouldAskForDependentChildren =
+    householdStatus === "married" || householdStatus === "previously_married";
+  const householdSummary =
+    householdStatus === null
+      ? "Answer these two profile questions first and the calculator will keep family-only reliefs out of the way."
+      : householdStatus === "single"
+        ? "Spouse, former-spouse, and child reliefs are hidden so the form stays focused on the deductions that still apply."
+        : householdStatus === "married"
+          ? hasDependentChildren === true
+            ? "Spouse and child-related reliefs are now included in the form."
+            : "Spouse-related reliefs are available. Child-related reliefs stay hidden until you say you need them."
+          : hasDependentChildren === true
+            ? "Former-spouse and child-related reliefs are available for review."
+            : "Former-spouse reliefs are available. Child-related reliefs stay hidden until they are needed.";
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+    <div className="space-y-6">
       <section className="app-panel p-6 sm:p-7">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="app-eyebrow">Income Tax Calculator</p>
-            <h2 className="mt-3 text-3xl text-brand-black">
+            {/* <h2 className="mt-3 text-3xl text-brand-black">
               Resident individual tax calculator
             </h2>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-brand-muted">
               Enter gross income, choose an assessment year from 2018 to 2025,
-              then complete the relevant relief sections. Fixed reliefs, dependant
-              counts, and capped expenses are all handled by the backend rules
-              behind this page.
-            </p>
+              then work through the relief sections below. Each section now opens
+              on demand, and family-specific questions sit inside the family
+              accordion where they matter.
+            </p> */}
           </div>
-          <span className={policyQuery.isFetching ? "app-pill-blue" : "app-pill"}>
+          {/* <span className={policyQuery.isFetching ? "app-pill-blue" : "app-pill"}>
             {policyQuery.isFetching ? "Refreshing policy" : "Ready"}
-          </span>
+          </span> */}
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           <SummaryTile label="Assessment year" value={String(selectedYear)} />
           <SummaryTile
-            label="Relief categories"
-            value={String(categories.length)}
+            label="Reliefs shown"
+            value={String(visibleCategories.length)}
           />
           <SummaryTile label="Tax rebate" value="Auto up to RM 400" />
         </div>
 
         <form className="mt-8 space-y-8" onSubmit={handleSubmit}>
-          <section className="grid gap-5 lg:grid-cols-3">
+          <section className="space-y-5">
             <div>
               <label className="app-label" htmlFor="policyYear">
                 Assessment year
@@ -662,61 +913,130 @@ export default function TaxCalculator() {
           ) : (
             <div className="space-y-8">
               {sectionedCategories.map((sectionGroup) => (
-                <section key={sectionGroup.section} className="space-y-4">
-                  <div>
-                    <p className="app-eyebrow">
-                      {sectionGroup.section.replaceAll("_", " ")}
-                    </p>
-                    <h3 className="mt-3 text-2xl text-brand-black">
-                      {sectionContent[sectionGroup.section]?.title ??
-                        sectionGroup.section}
-                    </h3>
-                    <p className="mt-2 text-sm leading-6 text-brand-muted">
-                      {sectionContent[sectionGroup.section]?.detail}
-                    </p>
-                  </div>
+                <AccordionSection
+                  key={sectionGroup.section}
+                  section={sectionGroup.section}
+                  title={
+                    sectionContent[sectionGroup.section]?.title ??
+                    sectionGroup.section
+                  }
+                  detail={sectionContent[sectionGroup.section]?.detail ?? ""}
+                  itemCount={sectionGroup.categories.length}
+                  isOpen={expandedSections[sectionGroup.section] ?? false}
+                  onToggle={() => toggleSection(sectionGroup.section)}
+                >
+                  <div className="space-y-6">
+                    {sectionGroup.section === "family" ? (
+                      <section className="rounded-card border border-brand-line bg-brand-ice p-5">
+                        <div className="max-w-3xl">
+                          <p className="app-eyebrow">Family profile</p>
+                          <h4 className="mt-3 text-xl text-brand-black">
+                            Show spouse and child reliefs only when they apply
+                          </h4>
+                          <p className="mt-3 text-sm leading-7 text-brand-muted">
+                            Set your family situation here. Relevant spouse and
+                            child deductions will appear in the sections below
+                            after you choose them.
+                          </p>
+                        </div>
 
-                  <div className="grid gap-4">
-                    {sectionGroup.categories.map((category) => {
-                      const disabled =
-                        category.requiresCategoryCode !== null &&
-                        !activeCodes.has(category.requiresCategoryCode);
+                        <div className="mt-6 space-y-6">
+                          <fieldset className="space-y-3">
+                            <legend className="app-label">
+                              Current family situation
+                            </legend>
+                            <div className="grid gap-3 md:grid-cols-3">
+                              {householdStatusOptions.map((option) => (
+                                <SituationChoice
+                                  key={option.value}
+                                  name="householdStatus"
+                                  value={option.value}
+                                  label={option.label}
+                                  detail={option.detail}
+                                  checked={householdStatus === option.value}
+                                  onChange={handleHouseholdStatusChange}
+                                />
+                              ))}
+                            </div>
+                          </fieldset>
 
-                      return (
-                        <CategoryField
-                          key={category.id}
-                          category={category}
-                          amountValue={amountValues[category.id] ?? ""}
-                          countValue={countValues[category.id] ?? ""}
-                          selected={selectedValues[category.id] ?? false}
-                          validationMessage={categoryValidationMessages[category.id]}
-                          disabled={disabled}
-                          onAmountChange={(nextValue) => {
-                            setAmountValues((currentValues) => ({
-                              ...currentValues,
-                              [category.id]: nextValue,
-                            }));
-                            setFormError(null);
-                          }}
-                          onCountChange={(nextValue) => {
-                            setCountValues((currentValues) => ({
-                              ...currentValues,
-                              [category.id]: nextValue,
-                            }));
-                            setFormError(null);
-                          }}
-                          onSelectedChange={(nextValue) => {
-                            setSelectedValues((currentValues) => ({
-                              ...currentValues,
-                              [category.id]: nextValue,
-                            }));
-                            setFormError(null);
-                          }}
-                        />
-                      );
-                    })}
+                          {shouldAskForDependentChildren ? (
+                            <fieldset className="space-y-3">
+                              <legend className="app-label">
+                                Do you need child-related reliefs for this filing?
+                              </legend>
+                              <div className="grid gap-3 md:grid-cols-2">
+                                <SituationChoice
+                                  name="hasDependentChildren"
+                                  value="yes"
+                                  label="Yes"
+                                  detail="Show childcare, SSPN, and dependant child relief categories."
+                                  checked={hasDependentChildren === true}
+                                  onChange={handleDependentChildrenChange}
+                                />
+                                <SituationChoice
+                                  name="hasDependentChildren"
+                                  value="no"
+                                  label="No"
+                                  detail="Keep child-related reliefs hidden and keep the form shorter."
+                                  checked={hasDependentChildren === false}
+                                  onChange={handleDependentChildrenChange}
+                                />
+                              </div>
+                            </fieldset>
+                          ) : null}
+
+                          <div className="rounded-card border border-brand-line bg-brand-white px-4 py-3 text-sm leading-6 text-brand-muted">
+                            {householdSummary}
+                          </div>
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {sectionGroup.categories.length ? (
+                      <div className="grid gap-4">
+                        {sectionGroup.categories.map((category) => {
+                          return (
+                            <CategoryField
+                              key={category.id}
+                              category={category}
+                              amountValue={amountValues[category.id] ?? ""}
+                              countValue={countValues[category.id] ?? ""}
+                              selected={selectedValues[category.id] ?? false}
+                              validationMessage={categoryValidationMessages[category.id]}
+                              disabled={false}
+                              onAmountChange={(nextValue) => {
+                                setAmountValues((currentValues) => ({
+                                  ...currentValues,
+                                  [category.id]: nextValue,
+                                }));
+                                setFormError(null);
+                              }}
+                              onCountChange={(nextValue) => {
+                                setCountValues((currentValues) => ({
+                                  ...currentValues,
+                                  [category.id]: nextValue,
+                                }));
+                                setFormError(null);
+                              }}
+                              onSelectedChange={(nextValue) => {
+                                setSelectedValues((currentValues) => ({
+                                  ...currentValues,
+                                  [category.id]: nextValue,
+                                }));
+                                setFormError(null);
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-card border border-dashed border-brand-line bg-brand-ice px-4 py-4 text-sm leading-6 text-brand-muted">
+                        No relief items are visible in this section yet.
+                      </div>
+                    )}
                   </div>
-                </section>
+                </AccordionSection>
               ))}
             </div>
           )}
@@ -742,40 +1062,38 @@ export default function TaxCalculator() {
         </form>
       </section>
 
-      <div className="space-y-6 xl:sticky xl:top-24">
-        <section className="app-panel-muted p-6">
-          <p className="app-eyebrow">Notes</p>
-          <h2 className="mt-3 text-2xl text-brand-black">What this calculator covers</h2>
-          <div className="mt-5 space-y-3">
-            <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
-              <p className="text-sm leading-6 text-brand-black">
-                The calculator now supports resident-individual assessment years
-                2018 through 2025 with year-specific relief categories, caps,
-                and tax brackets.
-              </p>
-            </article>
-            <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
-              <p className="text-sm leading-6 text-brand-black">
-                Self relief is applied automatically, shared medical caps are
-                enforced in the backend, and low-income rebates are calculated
-                automatically.
-              </p>
-            </article>
-            <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
-              <p className="text-sm leading-6 text-brand-black">
-                This flow focuses on gross income, reliefs, zakat, and final tax due.
-                PCB and refund balancing are not included yet.
-              </p>
-            </article>
-          </div>
-        </section>
+      <section className="app-panel-muted p-6">
+        <p className="app-eyebrow">Notes</p>
+        <h2 className="mt-3 text-2xl text-brand-black">What this calculator covers</h2>
+        <div className="mt-5 space-y-3">
+          <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
+            <p className="text-sm leading-6 text-brand-black">
+              The calculator now supports resident-individual assessment years
+              2018 through 2025 with year-specific relief categories, caps,
+              and tax brackets.
+            </p>
+          </article>
+          <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
+            <p className="text-sm leading-6 text-brand-black">
+              Self relief is applied automatically, shared medical caps are
+              enforced in the backend, and low-income rebates are calculated
+              automatically.
+            </p>
+          </article>
+          <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
+            <p className="text-sm leading-6 text-brand-black">
+              This flow focuses on gross income, reliefs, zakat, and final tax due.
+              PCB and refund balancing are not included yet.
+            </p>
+          </article>
+        </div>
+      </section>
 
-        <CalculationResult
-          result={calculationMutation.data}
-          isPending={calculationMutation.isPending}
-          errorMessage={calculationError}
-        />
-      </div>
+      <CalculationResult
+        result={calculationMutation.data}
+        isPending={calculationMutation.isPending}
+        errorMessage={calculationError}
+      />
     </div>
   );
 }

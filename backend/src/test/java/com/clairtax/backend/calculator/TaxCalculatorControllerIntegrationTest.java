@@ -42,6 +42,7 @@ class TaxCalculatorControllerIntegrationTest {
     private static final UUID DISABLED_SPOUSE_RELIEF_ID = UUID.fromString("44444444-4444-4444-8444-444444444509");
     private static final UUID HOME_LOAN_SMALL_ID = UUID.fromString("44444444-4444-4444-8444-444444444510");
     private static final UUID HOME_LOAN_MEDIUM_ID = UUID.fromString("44444444-4444-4444-8444-444444444511");
+    private static final UUID DISABLED_CHILD_HIGHER_EDUCATION_ID = UUID.fromString("44444444-4444-4444-8444-444444444512");
     private static final UUID DRAFT_RELIEF_2026_ID = UUID.fromString("44444444-4444-4444-8444-444444444599");
 
     @Autowired
@@ -86,6 +87,7 @@ class TaxCalculatorControllerIntegrationTest {
                 "identity",
                 "fixed",
                 "9000.00",
+                null,
                 10,
                 null,
                 null,
@@ -105,6 +107,7 @@ class TaxCalculatorControllerIntegrationTest {
                 "family",
                 "fixed",
                 "4000.00",
+                null,
                 20,
                 "spouse_relief_cap",
                 "4000.00",
@@ -124,6 +127,7 @@ class TaxCalculatorControllerIntegrationTest {
                 "family",
                 "count",
                 "2000.00",
+                null,
                 30,
                 null,
                 null,
@@ -142,6 +146,7 @@ class TaxCalculatorControllerIntegrationTest {
                 "lifestyle_general",
                 "lifestyle",
                 "amount",
+                null,
                 null,
                 40,
                 null,
@@ -162,6 +167,7 @@ class TaxCalculatorControllerIntegrationTest {
                 "retirement",
                 "amount",
                 null,
+                null,
                 50,
                 null,
                 null,
@@ -180,6 +186,7 @@ class TaxCalculatorControllerIntegrationTest {
                 "medical_treatment_self_family",
                 "medical",
                 "amount",
+                null,
                 null,
                 60,
                 "medical_total",
@@ -200,6 +207,7 @@ class TaxCalculatorControllerIntegrationTest {
                 "medical",
                 "amount",
                 null,
+                null,
                 70,
                 "medical_total",
                 "10000.00",
@@ -218,6 +226,7 @@ class TaxCalculatorControllerIntegrationTest {
                 "child_learning_disability_support",
                 "medical",
                 "amount",
+                null,
                 null,
                 80,
                 "medical_total",
@@ -238,11 +247,12 @@ class TaxCalculatorControllerIntegrationTest {
                 "family",
                 "fixed",
                 "6000.00",
+                null,
                 90,
                 null,
                 null,
                 null,
-                "spouse_relief",
+                null,
                 false
         );
         insertRelief(
@@ -256,6 +266,7 @@ class TaxCalculatorControllerIntegrationTest {
                 "first_home_loan_interest_upto_500k",
                 "property",
                 "amount",
+                null,
                 null,
                 100,
                 null,
@@ -276,10 +287,31 @@ class TaxCalculatorControllerIntegrationTest {
                 "property",
                 "amount",
                 null,
+                null,
                 110,
                 null,
                 null,
                 "home_loan_interest",
+                null,
+                false
+        );
+        insertRelief(
+                DISABLED_CHILD_HIGHER_EDUCATION_ID,
+                POLICY_YEAR_2025_ID,
+                "Disabled child in diploma or higher education",
+                "Relief per disabled child in higher education.",
+                "8000.00",
+                "family",
+                false,
+                "disabled_child_higher_education",
+                "family",
+                "count",
+                "8000.00",
+                null,
+                120,
+                null,
+                null,
+                null,
                 null,
                 false
         );
@@ -294,6 +326,7 @@ class TaxCalculatorControllerIntegrationTest {
                 "draft_digital_learning",
                 "education",
                 "amount",
+                null,
                 null,
                 10,
                 null,
@@ -415,7 +448,7 @@ class TaxCalculatorControllerIntegrationTest {
     }
 
     @Test
-    void rejectsDependentReliefThatRequiresBaseSpouseRelief() throws Exception {
+    void allowsStandaloneDisabledSpouseRelief() throws Exception {
         String request = """
                 {
                   "policyYear": 2025,
@@ -432,9 +465,32 @@ class TaxCalculatorControllerIntegrationTest {
         mockMvc.perform(post("/api/calculator/calculate")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-                .andExpect(jsonPath("$.message").value(containsString("requires spouse_relief")));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalRelief").value(15000.00))
+                .andExpect(jsonPath("$.chargeableIncome").value(55000.00));
+    }
+
+    @Test
+    void calculatesDisabledChildHigherEducationPerChildWithoutQuantityLimit() throws Exception {
+        String request = """
+                {
+                  "policyYear": 2025,
+                  "grossIncome": 80000.00,
+                  "selectedReliefs": [
+                    {
+                      "reliefCategoryId": "%s",
+                      "quantity": 3
+                    }
+                  ]
+                }
+                """.formatted(DISABLED_CHILD_HIGHER_EDUCATION_ID);
+
+        mockMvc.perform(post("/api/calculator/calculate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalRelief").value(33000.00))
+                .andExpect(jsonPath("$.chargeableIncome").value(47000.00));
     }
 
     @Test
@@ -500,6 +556,7 @@ class TaxCalculatorControllerIntegrationTest {
             String section,
             String inputType,
             String unitAmount,
+            Integer maxQuantity,
             int displayOrder,
             String groupCode,
             String groupMaxAmount,
@@ -521,13 +578,14 @@ class TaxCalculatorControllerIntegrationTest {
                     section,
                     input_type,
                     unit_amount,
+                    max_quantity,
                     display_order,
                     group_code,
                     group_max_amount,
                     exclusive_group_code,
                     requires_category_code,
                     auto_apply
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id,
                 policyYearId,
@@ -540,6 +598,7 @@ class TaxCalculatorControllerIntegrationTest {
                 section,
                 inputType,
                 unitAmount,
+                maxQuantity,
                 displayOrder,
                 groupCode,
                 groupMaxAmount,

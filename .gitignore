@@ -41,3 +41,12 @@ ai-service/__pycache__/
 # Test and coverage output
 coverage/
 .coverage
+
+.codex
+.claude
+/agents
+/fastapi
+/frontend
+/sample
+/springboot
+AGENTS.md
