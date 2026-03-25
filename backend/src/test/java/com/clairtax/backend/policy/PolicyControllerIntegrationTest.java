@@ -35,6 +35,9 @@ class PolicyControllerIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.update("DELETE FROM user_relief_claims");
+        jdbcTemplate.update("DELETE FROM receipts");
+        jdbcTemplate.update("DELETE FROM user_policy_years");
         jdbcTemplate.update("DELETE FROM relief_categories");
         jdbcTemplate.update("DELETE FROM tax_brackets");
         jdbcTemplate.update("DELETE FROM policy_year");

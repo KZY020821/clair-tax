@@ -53,9 +53,23 @@ class TaxCalculatorControllerIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.update("DELETE FROM user_relief_claims");
+        jdbcTemplate.update("DELETE FROM receipts");
+        jdbcTemplate.update("DELETE FROM user_policy_years");
         jdbcTemplate.update("DELETE FROM relief_categories");
         jdbcTemplate.update("DELETE FROM tax_brackets");
         jdbcTemplate.update("DELETE FROM policy_year");
+        jdbcTemplate.update(
+                """
+                        UPDATE users
+                        SET is_disabled = FALSE,
+                            marital_status = 'single',
+                            spouse_disabled = NULL,
+                            spouse_working = NULL,
+                            has_children = NULL
+                        WHERE email = 'dev@taxrelief.local'
+                        """
+        );
 
         jdbcTemplate.update(
                 "INSERT INTO policy_year (id, year, status, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
@@ -339,6 +353,8 @@ class TaxCalculatorControllerIntegrationTest {
 
     @Test
     void calculatesTaxUsingYa2025RulesAndSummaryFields() throws Exception {
+        updateCurrentProfile(false, "married", false, false, true);
+
         String request = """
                 {
                   "policyYear": 2025,
@@ -388,6 +404,8 @@ class TaxCalculatorControllerIntegrationTest {
 
     @Test
     void capsSharedMedicalReliefsAndAppliesAutomaticRebate() throws Exception {
+        updateCurrentProfile(false, "previously_married", null, null, true);
+
         String request = """
                 {
                   "policyYear": 2025,
@@ -448,30 +466,29 @@ class TaxCalculatorControllerIntegrationTest {
     }
 
     @Test
-    void allowsStandaloneDisabledSpouseRelief() throws Exception {
+    void autoAppliesSavedSpouseReliefs() throws Exception {
+        updateCurrentProfile(false, "married", true, false, false);
+
         String request = """
                 {
                   "policyYear": 2025,
                   "grossIncome": 70000.00,
-                  "selectedReliefs": [
-                    {
-                      "reliefCategoryId": "%s",
-                      "selected": true
-                    }
-                  ]
+                  "selectedReliefs": []
                 }
-                """.formatted(DISABLED_SPOUSE_RELIEF_ID);
+                """;
 
         mockMvc.perform(post("/api/calculator/calculate")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalRelief").value(15000.00))
-                .andExpect(jsonPath("$.chargeableIncome").value(55000.00));
+                .andExpect(jsonPath("$.totalRelief").value(19000.00))
+                .andExpect(jsonPath("$.chargeableIncome").value(51000.00));
     }
 
     @Test
     void calculatesDisabledChildHigherEducationPerChildWithoutQuantityLimit() throws Exception {
+        updateCurrentProfile(false, "married", false, true, true);
+
         String request = """
                 {
                   "policyYear": 2025,
@@ -514,6 +531,29 @@ class TaxCalculatorControllerIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.message").value(containsString("does not belong to policy year 2025")));
+    }
+
+    @Test
+    void rejectsProfileIneligibleReliefsFromTheRequest() throws Exception {
+        String request = """
+                {
+                  "policyYear": 2025,
+                  "grossIncome": 50000.00,
+                  "selectedReliefs": [
+                    {
+                      "reliefCategoryId": "%s",
+                      "selected": true
+                    }
+                  ]
+                }
+                """.formatted(SPOUSE_RELIEF_ID);
+
+        mockMvc.perform(post("/api/calculator/calculate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value(containsString("saved profile")));
     }
 
     @Test
@@ -605,6 +645,31 @@ class TaxCalculatorControllerIntegrationTest {
                 exclusiveGroupCode,
                 requiresCategoryCode,
                 autoApply
+        );
+    }
+
+    private void updateCurrentProfile(
+            boolean isDisabled,
+            String maritalStatus,
+            Boolean spouseDisabled,
+            Boolean spouseWorking,
+            Boolean hasChildren
+    ) {
+        jdbcTemplate.update(
+                """
+                        UPDATE users
+                        SET is_disabled = ?,
+                            marital_status = ?,
+                            spouse_disabled = ?,
+                            spouse_working = ?,
+                            has_children = ?
+                        WHERE email = 'dev@taxrelief.local'
+                        """,
+                isDisabled,
+                maritalStatus,
+                spouseDisabled,
+                spouseWorking,
+                hasChildren
         );
     }
 }

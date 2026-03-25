@@ -3,8 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ComponentType, ReactNode, SVGProps } from "react";
-import { fetchPolicyYears } from "../lib/policy-years";
+import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
+import { fetchDevCurrentUser } from "../lib/receipts";
+import { fetchUserYears } from "../lib/user-years";
 
 type AppShellProps = Readonly<{
   children: ReactNode;
@@ -102,16 +103,38 @@ function FooterTextLink({
 
 export default function AppShell({ children, currentYear }: AppShellProps) {
   const pathname = usePathname();
-  const policyYearsQuery = useQuery({
-    queryKey: ["policy-years"],
-    queryFn: fetchPolicyYears,
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Auto-close sidebar on route change (mobile)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsSidebarOpen(false);
+  }, [pathname]);
+
+  // Prevent body scroll when sidebar is open on mobile
+  useEffect(() => {
+    if (isSidebarOpen && typeof window !== "undefined" && window.innerWidth < 1024) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isSidebarOpen]);
+
+  const userYearsQuery = useQuery({
+    queryKey: ["user-years"],
+    queryFn: fetchUserYears,
+  });
+  const devUserQuery = useQuery({
+    queryKey: ["dev-current-user"],
+    queryFn: fetchDevCurrentUser,
   });
 
-  const sidebarYears = (
-    policyYearsQuery.data?.map((policyYear) => policyYear.year) ?? [2024, 2023]
-  )
-    .sort((left, right) => right - left)
-    .slice(0, 4);
+  const sidebarYears = userYearsQuery.data?.map((userYear) => userYear.year) ?? [];
+  const currentEmail = devUserQuery.data?.email ?? "dev@taxrelief.local";
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -122,19 +145,46 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
           </Link>
 
           <div className="flex items-center gap-3">
-            <span className="hidden text-sm font-medium text-brand-black sm:block">
-              khorzeyi02@gmail.com
-            </span>
-            <button type="button" className="app-button-secondary px-6 py-2.5">
-              Log out
+            <button
+              type="button"
+              onClick={() => setIsSidebarOpen(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-brand-line bg-brand-white transition hover:bg-brand-ice lg:hidden"
+              aria-label="Open menu"
+            >
+              <svg className="h-5 w-5 text-brand-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
             </button>
+
+            <span className="hidden text-sm font-medium text-brand-black sm:block">
+              {currentEmail}
+            </span>
+            <span className="app-pill-blue">Dev mode</span>
           </div>
         </div>
       </header>
 
       <div className="mx-auto flex w-full max-w-shell flex-1 flex-col gap-6 px-4 pb-8 pt-6 sm:px-6 lg:flex-row lg:items-start lg:px-8">
-        <aside className="w-full lg:sticky lg:top-24 lg:max-w-[17.5rem] lg:self-start">
-          <div className="flex flex-col gap-4 rounded-panel border border-brand-line bg-brand-sidebar/85 p-4 shadow-panel">
+        <aside
+          className={`
+            fixed left-0 top-0 z-40 h-full w-full max-w-sm
+            transform transition-transform duration-300 ease-out
+            lg:sticky lg:top-24 lg:h-auto lg:w-full lg:max-w-[17.5rem] lg:transform-none lg:self-start
+            ${isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+          `}
+        >
+          <div className="flex h-full flex-col gap-4 rounded-none border-r border-brand-line bg-brand-white p-4 shadow-2xl lg:rounded-panel lg:border lg:bg-brand-sidebar/85 lg:shadow-panel">
+            <button
+              type="button"
+              onClick={() => setIsSidebarOpen(false)}
+              className="self-end rounded-full p-2 transition hover:bg-brand-ice lg:hidden"
+              aria-label="Close menu"
+            >
+              <svg className="h-5 w-5 text-brand-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
             <nav className="space-y-1.5">
               <Link
                 href="/"
@@ -159,32 +209,38 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
                 <ChevronDownIcon className="h-4 w-4 text-brand-black" />
               </div>
 
-              <Link href="/years/new" className="sidebar-action">
+              <Link href="/year/create" className="sidebar-action">
                 <SidebarIcon icon={PlusCircleIcon} />
                 <span>Create New</span>
               </Link>
 
               <div className="space-y-1 px-2">
-                {sidebarYears.map((year) => {
-                  const href = `/years/${year}`;
-                  const active = pathname === href;
+                {sidebarYears.length > 0 ? (
+                  sidebarYears.map((year) => {
+                    const href = `/year/${year}`;
+                    const active = pathname === href;
 
-                  return (
-                    <Link
-                      key={year}
-                      href={href}
-                      aria-current={active ? "page" : undefined}
-                      className={[
-                        "sidebar-year-link",
-                        active ? "sidebar-year-link-active" : "",
-                      ]
-                        .join(" ")
-                        .trim()}
-                    >
-                      {year}
-                    </Link>
-                  );
-                })}
+                    return (
+                      <Link
+                        key={year}
+                        href={href}
+                        aria-current={active ? "page" : undefined}
+                        className={[
+                          "sidebar-year-link",
+                          active ? "sidebar-year-link-active" : "",
+                        ]
+                          .join(" ")
+                          .trim()}
+                      >
+                        {year}
+                      </Link>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-card border border-dashed border-brand-line px-4 py-3 text-sm leading-6 text-brand-muted">
+                    Create a year workspace to pin it here.
+                  </div>
+                )}
               </div>
             </section>
 
@@ -231,6 +287,15 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
         <main className="min-w-0 flex-1">
           <div className="mx-auto w-full max-w-content xl:max-w-none">{children}</div>
         </main>
+
+        {/* Backdrop overlay for mobile sidebar */}
+        {isSidebarOpen ? (
+          <div
+            className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm transition-opacity lg:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+            aria-hidden="true"
+          />
+        ) : null}
       </div>
 
       <footer className="border-t border-brand-line bg-brand-white">
@@ -252,6 +317,12 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
               className="font-medium text-brand-black transition hover:text-brand-blue"
             >
               Profile
+            </Link>
+            <Link
+              href="/year/create"
+              className="font-medium text-brand-black transition hover:text-brand-blue"
+            >
+              Years
             </Link>
           </div>
         </div>

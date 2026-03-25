@@ -29,3 +29,9 @@ management:
 
 server:
   port: ${SERVER_PORT:8080}
+
+clair:
+  dev-user:
+    email: ${CLAIR_DEV_USER_EMAIL:dev@taxrelief.local}
+  receipts:
+    storage-path: ${CLAIR_RECEIPTS_STORAGE_PATH:/tmp/clair-tax-receipts}
