@@ -1,0 +1,35 @@
+{
+  "name": "clair-tax-mobile-app",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.91.2",
+    "expo": "~54.0.0",
+    "expo-document-picker": "~14.0.0",
+    "expo-image-picker": "~17.0.10",
+    "expo-linking": "~8.0.0",
+    "expo-network": "~8.0.0",
+    "expo-router": "~6.0.0",
+    "expo-splash-screen": "~31.0.0",
+    "expo-status-bar": "~3.0.0",
+    "react": "19.1.0",
+    "react-native": "0.81.0",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-reanimated": "~4.1.0",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2"
+  }
+}

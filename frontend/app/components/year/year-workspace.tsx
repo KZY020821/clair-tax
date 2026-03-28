@@ -7,8 +7,10 @@ import { formatCurrency } from "../../lib/format-currency";
 import { fetchProfile } from "../../lib/profile";
 import { buildProfileFactList } from "../../lib/profile-relief-visibility";
 import {
+  confirmReceiptReview,
   deleteReceipt,
   fetchReceiptsForUserYear,
+  rejectReceiptReview,
   resolveReceiptFileUrl,
   updateReceipt,
   uploadReceiptForUserYear,
@@ -27,9 +29,6 @@ type Notification = {
 };
 
 type UploadFormState = {
-  merchantName: string;
-  receiptDate: string;
-  amount: string;
   reliefCategoryId: string;
   notes: string;
   file: File | null;
@@ -62,13 +61,29 @@ function buildEmptyUploadForm(
   categories: UserYearCategorySummary[] | undefined,
 ): UploadFormState {
   return {
-    merchantName: "",
-    receiptDate: "",
-    amount: "",
     reliefCategoryId: categories?.[0]?.reliefCategoryId ?? "",
     notes: "",
     file: null,
   };
+}
+
+function formatReceiptStatus(status: string): string {
+  switch (status) {
+    case "uploaded":
+      return "Uploaded";
+    case "processing":
+      return "Processing";
+    case "processed":
+      return "Ready for review";
+    case "verified":
+      return "Verified";
+    case "rejected":
+      return "Rejected";
+    case "failed":
+      return "Failed";
+    default:
+      return status;
+  }
 }
 
 function SummaryCard({
@@ -192,10 +207,8 @@ export default function YearWorkspace({
   year: number;
 }>) {
   const queryClient = useQueryClient();
+  const notificationCounterRef = useRef(0);
   const [uploadForm, setUploadForm] = useState<UploadFormState>({
-    merchantName: "",
-    receiptDate: "",
-    amount: "",
     reliefCategoryId: "",
     notes: "",
     file: null,
@@ -222,23 +235,13 @@ export default function YearWorkspace({
 
   const uploadMutation = useMutation({
     mutationFn: () => {
-      const merchantName = uploadForm.merchantName.trim();
-      const receiptDate = uploadForm.receiptDate.trim();
-      const amount = Number(uploadForm.amount);
       const reliefCategoryId =
         uploadForm.reliefCategoryId ||
         workspaceQuery.data?.categories[0]?.reliefCategoryId ||
         "";
 
-      if (
-        merchantName === "" ||
-        receiptDate === "" ||
-        !Number.isFinite(amount) ||
-        amount < 0 ||
-        reliefCategoryId === "" ||
-        uploadForm.file === null
-      ) {
-        throw new Error("Complete the required fields before uploading a receipt.");
+      if (reliefCategoryId === "" || uploadForm.file === null) {
+        throw new Error("Choose a category and attach a receipt file before uploading.");
       }
 
       // Validate file size (10MB limit)
@@ -250,9 +253,6 @@ export default function YearWorkspace({
       }
 
       return uploadReceiptForUserYear(year, {
-        merchantName,
-        receiptDate,
-        amount,
         reliefCategoryId,
         notes: normalizeOptionalString(uploadForm.notes),
         file: uploadForm.file,
@@ -260,7 +260,7 @@ export default function YearWorkspace({
     },
     onSuccess: async () => {
       setUploadForm(buildEmptyUploadForm(workspaceQuery.data?.categories));
-      showNotification("Receipt uploaded successfully!");
+      showNotification("Receipt uploaded. Extraction is now processing.");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["user-year-workspace", year] }),
         queryClient.invalidateQueries({ queryKey: ["user-year-receipts", year] }),
@@ -304,6 +304,28 @@ export default function YearWorkspace({
     },
   });
 
+  const confirmReviewMutation = useMutation({
+    mutationFn: (receiptId: string) => confirmReceiptReview(receiptId),
+    onSuccess: async () => {
+      showNotification("Receipt confirmed and counted toward this year.");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["user-year-workspace", year] }),
+        queryClient.invalidateQueries({ queryKey: ["user-year-receipts", year] }),
+      ]);
+    },
+  });
+
+  const rejectReviewMutation = useMutation({
+    mutationFn: (receiptId: string) => rejectReceiptReview(receiptId),
+    onSuccess: async () => {
+      showNotification("Receipt extraction was rejected.", "info");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["user-year-workspace", year] }),
+        queryClient.invalidateQueries({ queryKey: ["user-year-receipts", year] }),
+      ]);
+    },
+  });
+
   const workspace = workspaceQuery.data;
   const receipts = receiptsQuery.data ?? [];
   const categories = workspace?.categories ?? [];
@@ -319,7 +341,8 @@ export default function YearWorkspace({
     message: string,
     type: "success" | "error" | "info" = "success",
   ) {
-    const id = `notification-${Date.now()}-${Math.random()}`;
+    notificationCounterRef.current += 1;
+    const id = `notification-${notificationCounterRef.current}`;
     const notification: Notification = { id, message, type };
 
     setNotifications((current) => [...current, notification]);
@@ -356,6 +379,18 @@ export default function YearWorkspace({
   }
 
   function handleEdit(receipt: Receipt) {
+    if (
+      receipt.merchantName === null ||
+      receipt.receiptDate === null ||
+      receipt.amount === null
+    ) {
+      showNotification(
+        "Finish reviewing the extracted receipt before editing the saved values.",
+        "info",
+      );
+      return;
+    }
+
     setEditingReceipt(receipt);
     setEditError(null);
     setEditForm({
@@ -409,7 +444,7 @@ export default function YearWorkspace({
   function handleDelete(receipt: Receipt) {
     if (
       !window.confirm(
-        `Delete the receipt from ${receipt.merchantName} dated ${receipt.receiptDate}?`,
+        `Delete the receipt ${receipt.fileName ?? receipt.id}?`,
       )
     ) {
       return;
@@ -490,7 +525,7 @@ export default function YearWorkspace({
         <SummaryCard
           label="Receipts on file"
           value={String(workspace.totalReceiptCount)}
-          detail="Each uploaded receipt in this year refreshes the summary immediately."
+          detail="Uploaded receipts count immediately; claimed totals move only after review."
         />
         <SummaryCard
           label="Available categories"
@@ -567,12 +602,12 @@ export default function YearWorkspace({
           <p className="app-eyebrow">Upload Receipt</p>
           <h2 className="mt-3 text-3xl text-brand-black">Add another receipt</h2>
           <p className="mt-3 text-sm leading-7 text-brand-muted">
-            Select a category from this year, attach the receipt file, then enter
-            the amount you want the year summary to count.
+            Select a category, attach the file, and let the extraction worker
+            produce the candidate amount and date for review.
           </p>
 
           <form className="mt-6 space-y-5" onSubmit={handleUploadSubmit}>
-            <div className="grid gap-5 md:grid-cols-2">
+            <div className="grid gap-5 md:grid-cols-1">
               <label className="block">
                 <span className="app-label">Relief category</span>
                 <select
@@ -595,55 +630,6 @@ export default function YearWorkspace({
                     </option>
                   ))}
                 </select>
-              </label>
-
-              <label className="block">
-                <span className="app-label">Merchant name</span>
-                <input
-                  className="app-input"
-                  name="merchantName"
-                  value={uploadForm.merchantName}
-                  onChange={(event) => {
-                    setUploadForm((current) => ({
-                      ...current,
-                      merchantName: event.target.value,
-                    }));
-                  }}
-                />
-              </label>
-
-              <label className="block">
-                <span className="app-label">Receipt date</span>
-                <input
-                  type="date"
-                  className="app-input"
-                  name="receiptDate"
-                  value={uploadForm.receiptDate}
-                  onChange={(event) => {
-                    setUploadForm((current) => ({
-                      ...current,
-                      receiptDate: event.target.value,
-                    }));
-                  }}
-                />
-              </label>
-
-              <label className="block">
-                <span className="app-label">Amount</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="app-input"
-                  name="amount"
-                  value={uploadForm.amount}
-                  onChange={(event) => {
-                    setUploadForm((current) => ({
-                      ...current,
-                      amount: event.target.value,
-                    }));
-                  }}
-                />
               </label>
             </div>
 
@@ -676,7 +662,8 @@ export default function YearWorkspace({
                 }}
               />
               <p className="app-help">
-                Maximum file size: 10MB. Files are stored locally for dev use only.
+                Maximum file size: 10MB. The file uploads to object storage first,
+                then enters the extraction queue for review.
               </p>
               {uploadForm.file ? (
                 <div className="mt-2">
@@ -698,7 +685,7 @@ export default function YearWorkspace({
                   Selected category summary
                 </p>
                 <p className="mt-2 text-sm leading-7 text-brand-muted">
-                  This is the category that the next uploaded receipt will update.
+                  Verified receipts from this category contribute to the summary.
                 </p>
                 <div className="mt-4">
                   <CategorySummaryCard
@@ -741,8 +728,8 @@ export default function YearWorkspace({
           <p className="app-eyebrow">Saved Receipts</p>
           <h2 className="mt-3 text-3xl text-brand-black">Receipt ledger</h2>
           <p className="mt-3 text-sm leading-7 text-brand-muted">
-            Every saved receipt here belongs to year {year}. Edit the detail, or
-            remove the record and the summary above will refresh from the backend.
+            Every uploaded receipt here belongs to year {year}. Only verified
+            receipts affect the claimed totals above.
           </p>
 
           {receiptsQuery.isLoading ? (
@@ -772,19 +759,56 @@ export default function YearWorkspace({
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-base font-semibold text-brand-black">
-                            {receipt.merchantName}
+                            {receipt.merchantName ??
+                              receipt.latestExtraction?.merchantName ??
+                              receipt.fileName ??
+                              "Receipt awaiting extraction"}
                           </p>
                           {receipt.reliefCategoryName ? (
                             <span className="app-pill">{receipt.reliefCategoryName}</span>
                           ) : null}
+                          <span className="app-pill-blue">
+                            {formatReceiptStatus(receipt.status)}
+                          </span>
                         </div>
                         <p className="mt-2 text-sm leading-7 text-brand-muted">
-                          {formatReceiptDate(receipt.receiptDate)} ·{" "}
-                          {formatCurrency(receipt.amount)}
+                          {receipt.receiptDate
+                            ? formatReceiptDate(receipt.receiptDate)
+                            : receipt.latestExtraction?.receiptDate
+                              ? formatReceiptDate(receipt.latestExtraction.receiptDate)
+                              : "Date pending"}{" "}
+                          ·{" "}
+                          {receipt.amount !== null
+                            ? formatCurrency(receipt.amount)
+                            : receipt.latestExtraction?.totalAmount !== null &&
+                                receipt.latestExtraction?.totalAmount !== undefined
+                              ? `${formatCurrency(receipt.latestExtraction.totalAmount)} (candidate)`
+                              : "Amount pending"}
                         </p>
                         {receipt.notes ? (
                           <p className="mt-2 text-sm leading-7 text-brand-muted">
                             {receipt.notes}
+                          </p>
+                        ) : null}
+                        {receipt.latestExtraction ? (
+                          <div className="mt-3 rounded-card border border-brand-line bg-brand-ice px-4 py-4 text-sm leading-6 text-brand-muted">
+                            <p className="font-semibold text-brand-black">
+                              Latest extraction
+                            </p>
+                            <p className="mt-2">
+                              Confidence {(receipt.latestExtraction.confidenceScore * 100).toFixed(0)}%
+                              via {receipt.latestExtraction.providerName}.
+                            </p>
+                            {receipt.latestExtraction.warnings.length > 0 ? (
+                              <p className="mt-2">
+                                {receipt.latestExtraction.warnings.join(" ")}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {receipt.processingErrorMessage ? (
+                          <p className="mt-2 text-sm leading-7 text-red-700">
+                            {receipt.processingErrorMessage}
                           </p>
                         ) : null}
                         {fileUrl ? (
@@ -800,12 +824,39 @@ export default function YearWorkspace({
                       </div>
 
                       <div className="flex flex-wrap gap-3">
+                        {receipt.status === "processed" ? (
+                          <>
+                            <button
+                              type="button"
+                              className="app-button-primary"
+                              onClick={() => {
+                                confirmReviewMutation.mutate(receipt.id);
+                              }}
+                              disabled={confirmReviewMutation.isPending}
+                            >
+                              {confirmReviewMutation.isPending
+                                ? "Confirming..."
+                                : "Confirm extraction"}
+                            </button>
+                            <button
+                              type="button"
+                              className="app-button-secondary"
+                              onClick={() => {
+                                rejectReviewMutation.mutate(receipt.id);
+                              }}
+                              disabled={rejectReviewMutation.isPending}
+                            >
+                              Reject
+                            </button>
+                          </>
+                        ) : null}
                         <button
                           type="button"
                           className="app-button-secondary"
                           onClick={() => {
                             handleEdit(receipt);
                           }}
+                          disabled={receipt.status !== "verified"}
                         >
                           Edit
                         </button>

@@ -1,14 +1,16 @@
 package com.clairtax.backend.user;
 
 import com.clairtax.backend.user.repository.AppUserRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -20,7 +22,6 @@ import static org.hamcrest.Matchers.is;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -43,16 +44,26 @@ class ProfileControllerIntegrationTest {
     @Autowired
     private AppUserRepository appUserRepository;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @Value("${clair.dev-user.email}")
     private String devUserEmail;
 
     @Value("${clair.receipts.storage-path}")
     private String receiptStoragePath;
 
+    @Value("${clair.receipts.internal-api-token}")
+    private String internalApiToken;
+
     private UUID devUserId;
 
     @BeforeEach
     void setUp() throws Exception {
+        jdbcTemplate.update("DELETE FROM receipt_review_actions");
+        jdbcTemplate.update("DELETE FROM receipt_extraction_results");
+        jdbcTemplate.update("DELETE FROM receipt_processing_attempts");
+        jdbcTemplate.update("DELETE FROM receipt_upload_intents");
         jdbcTemplate.update("DELETE FROM user_relief_claims");
         jdbcTemplate.update("DELETE FROM receipts");
         jdbcTemplate.update("DELETE FROM user_policy_years");
@@ -167,27 +178,91 @@ class ProfileControllerIntegrationTest {
                                 """))
                 .andExpect(status().isOk());
 
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "receipt.pdf",
-                "application/pdf",
-                "receipt".getBytes()
+        JsonNode uploadIntentResponse = objectMapper.readTree(
+                mockMvc.perform(post("/api/user-years/{year}/receipts/upload-intent", 2025)
+                                .contentType(APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "reliefCategoryId": "%s",
+                                          "fileName": "receipt.pdf",
+                                          "mimeType": "application/pdf",
+                                          "fileSizeBytes": 7
+                                        }
+                                        """.formatted(RECEIPT_RELIEF_ID)))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString()
         );
 
-        mockMvc.perform(multipart("/api/user-years/{year}/receipts", 2025)
-                        .file(file)
-                        .param("merchantName", "Clinic")
-                        .param("receiptDate", "2025-06-12")
-                        .param("amount", "120.50")
-                        .param("reliefCategoryId", RECEIPT_RELIEF_ID.toString()))
-                .andExpect(status().isCreated());
+        mockMvc.perform(put(uploadIntentResponse.get("uploadUrl").asText())
+                        .contentType(MediaType.APPLICATION_PDF)
+                        .content("receipt".getBytes()))
+                .andExpect(status().isNoContent());
 
-        UUID storedReceiptId = jdbcTemplate.queryForObject(
-                "SELECT id FROM receipts WHERE merchant_name = ?",
-                UUID.class,
-                "Clinic"
+        JsonNode confirmUploadResponse = objectMapper.readTree(
+                mockMvc.perform(post("/api/user-years/{year}/receipts/confirm-upload", 2025)
+                                .contentType(APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "uploadIntentId": "%s"
+                                        }
+                                        """.formatted(uploadIntentResponse.get("uploadIntentId").asText())))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString()
         );
-        Path storedReceipt = Path.of(receiptStoragePath).resolve(storedReceiptId.toString());
+
+        String receiptId = confirmUploadResponse.get("id").asText();
+        String jobId = jdbcTemplate.queryForObject(
+                "SELECT job_id FROM receipt_processing_attempts WHERE receipt_id = ?",
+                String.class,
+                UUID.fromString(receiptId)
+        );
+
+        mockMvc.perform(post("/api/internal/receipts/{receiptId}/processing-attempts", receiptId)
+                        .header("X-Clair-Internal-Token", internalApiToken)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jobId": "%s",
+                                  "status": "processing"
+                                }
+                                """.formatted(jobId)))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(post("/api/internal/receipts/{receiptId}/extraction-results", receiptId)
+                        .header("X-Clair-Internal-Token", internalApiToken)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jobId": "%s",
+                                  "totalAmount": "120.50",
+                                  "receiptDate": "2025-06-12",
+                                  "merchantName": "Clinic",
+                                  "currency": "MYR",
+                                  "confidenceScore": "0.9600",
+                                  "warnings": [],
+                                  "rawPayloadJson": "{\\"provider\\":\\"test\\"}",
+                                  "providerName": "test-provider",
+                                  "providerVersion": "2026-03-27",
+                                  "processedAt": "2026-03-27T00:00:00Z"
+                                }
+                                """.formatted(jobId)))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(post("/api/receipts/{receiptId}/review/confirm", receiptId)
+                        .contentType(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk());
+
+        String storedReceiptKey = jdbcTemplate.queryForObject(
+                "SELECT s3_key FROM receipts WHERE id = ?",
+                String.class,
+                UUID.fromString(receiptId)
+        );
+        Path storedReceipt = Path.of(receiptStoragePath).resolve(storedReceiptKey);
         if (!Files.exists(storedReceipt)) {
             throw new AssertionError("Expected uploaded receipt file to be stored");
         }

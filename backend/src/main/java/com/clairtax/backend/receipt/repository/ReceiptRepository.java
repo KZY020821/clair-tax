@@ -1,6 +1,7 @@
 package com.clairtax.backend.receipt.repository;
 
 import com.clairtax.backend.receipt.entity.Receipt;
+import com.clairtax.backend.receipt.model.ReceiptStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -33,7 +34,7 @@ public interface ReceiptRepository extends JpaRepository<Receipt, UUID> {
             from Receipt receipt
             where receipt.userPolicyYear.user.id = :userId
             and receipt.userPolicyYear.policyYear.year = :policyYear
-            order by receipt.receiptDate desc, receipt.createdAt desc
+            order by receipt.createdAt desc
             """)
     List<Receipt> findAllDetailedByUserIdAndPolicyYear(UUID userId, Integer policyYear);
 
@@ -42,7 +43,7 @@ public interface ReceiptRepository extends JpaRepository<Receipt, UUID> {
             select receipt
             from Receipt receipt
             where receipt.userPolicyYear.user.id = :userId
-            order by receipt.userPolicyYear.policyYear.year desc, receipt.receiptDate desc, receipt.createdAt desc
+            order by receipt.userPolicyYear.policyYear.year desc, receipt.createdAt desc
             """)
     List<Receipt> findAllDetailedByUserId(UUID userId);
 
@@ -51,7 +52,7 @@ public interface ReceiptRepository extends JpaRepository<Receipt, UUID> {
             select receipt
             from Receipt receipt
             where receipt.userPolicyYear.id = :userPolicyYearId
-            order by receipt.receiptDate desc, receipt.createdAt desc
+            order by receipt.createdAt desc
             """)
     List<Receipt> findAllDetailedByUserPolicyYearId(UUID userPolicyYearId);
 
@@ -69,8 +70,16 @@ public interface ReceiptRepository extends JpaRepository<Receipt, UUID> {
             from Receipt receipt
             where receipt.userPolicyYear.id = :userPolicyYearId
             and receipt.reliefCategory.id = :reliefCategoryId
+            and receipt.status = :status
             """)
-    BigDecimal sumAmountByUserPolicyYearIdAndReliefCategoryId(UUID userPolicyYearId, UUID reliefCategoryId);
+    BigDecimal sumAmountByUserPolicyYearIdAndReliefCategoryId(
+            UUID userPolicyYearId,
+            UUID reliefCategoryId,
+            ReceiptStatus status
+    );
+
+    @EntityGraph(attributePaths = {"reliefCategory", "userPolicyYear", "userPolicyYear.policyYear"})
+    List<Receipt> findAllByStatusInOrderByUpdatedAtDesc(List<ReceiptStatus> statuses);
 
     @Query("""
             select receipt.reliefCategory.id as reliefCategoryId, count(receipt.id) as receiptCount

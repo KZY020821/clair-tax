@@ -35,3 +35,11 @@ clair:
     email: ${CLAIR_DEV_USER_EMAIL:dev@taxrelief.local}
   receipts:
     storage-path: ${CLAIR_RECEIPTS_STORAGE_PATH:/tmp/clair-tax-receipts}
+    upload-path: ${CLAIR_RECEIPTS_UPLOAD_PATH:/tmp/clair-tax-receipt-uploads}
+    bucket-name: ${CLAIR_RECEIPTS_BUCKET_NAME:clair-tax-receipts}
+    upload-intent-ttl: ${CLAIR_RECEIPTS_UPLOAD_INTENT_TTL:PT15M}
+    internal-api-token: ${CLAIR_RECEIPTS_INTERNAL_API_TOKEN:dev-internal-token}
+    aws:
+      region: ${AWS_REGION:ap-southeast-1}
+    queue:
+      url: ${CLAIR_RECEIPTS_QUEUE_URL:}

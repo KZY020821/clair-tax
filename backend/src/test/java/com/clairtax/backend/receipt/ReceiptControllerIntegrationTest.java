@@ -51,6 +51,10 @@ class ReceiptControllerIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.update("DELETE FROM receipt_review_actions");
+        jdbcTemplate.update("DELETE FROM receipt_extraction_results");
+        jdbcTemplate.update("DELETE FROM receipt_processing_attempts");
+        jdbcTemplate.update("DELETE FROM receipt_upload_intents");
         jdbcTemplate.update("DELETE FROM user_relief_claims");
         jdbcTemplate.update("DELETE FROM receipts");
         jdbcTemplate.update("DELETE FROM user_policy_years");
@@ -348,26 +352,41 @@ class ReceiptControllerIntegrationTest {
                         INSERT INTO receipts (
                             id,
                             user_policy_year_id,
+                            relief_category_id,
                             merchant_name,
                             receipt_date,
                             amount,
-                            relief_category_id,
+                            currency_code,
                             notes,
                             file_name,
                             file_url,
+                            s3_bucket,
+                            s3_key,
+                            mime_type,
+                            file_size_bytes,
+                            sha256_hash,
+                            status,
+                            uploaded_at,
                             created_at,
                             updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         """,
                 id,
                 userPolicyYearId,
+                reliefCategoryId,
                 merchantName,
                 java.sql.Date.valueOf(receiptDate),
                 amount,
-                reliefCategoryId,
+                "MYR",
                 "Seeded receipt",
                 "seeded.pdf",
-                "https://example.com/seeded.pdf"
+                "/api/receipts/" + id + "/file",
+                "clair-tax-receipts",
+                "seeded-" + id,
+                "application/pdf",
+                7L,
+                UUID.randomUUID().toString().replace("-", ""),
+                "VERIFIED"
         );
     }
 }

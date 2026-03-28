@@ -29,19 +29,47 @@ const currentDevUserSchema = z.object({
   mode: z.string().min(1),
 });
 
+const latestExtractionSchema = z.object({
+  totalAmount: moneyValueSchema.nullable(),
+  receiptDate: z.string().min(1).nullable(),
+  merchantName: z.string().min(1).nullable(),
+  currency: z.string().min(3).max(3).nullable(),
+  confidenceScore: numericValueSchema,
+  warnings: z.array(z.string()),
+  providerName: z.string().min(1),
+  providerVersion: z.string().min(1),
+  processedAt: z.string().datetime({ offset: true }),
+});
+
 const receiptSchema = z.object({
   id: z.string().uuid(),
   policyYear: z.number().int(),
-  merchantName: z.string().min(1),
-  receiptDate: z.string().min(1),
-  amount: moneyValueSchema,
+  merchantName: z.string().min(1).nullable(),
+  receiptDate: z.string().min(1).nullable(),
+  amount: moneyValueSchema.nullable(),
+  currency: z.string().min(3).max(3).nullable(),
   reliefCategoryId: z.string().uuid().nullable(),
   reliefCategoryName: z.string().nullable(),
   notes: z.string().nullable(),
   fileName: z.string().nullable(),
   fileUrl: z.string().nullable(),
+  mimeType: z.string().min(1),
+  fileSizeBytes: z.number().int().nonnegative(),
+  status: z.string().min(1),
+  processingErrorCode: z.string().nullable(),
+  processingErrorMessage: z.string().nullable(),
+  latestExtraction: latestExtractionSchema.nullable(),
+  uploadedAt: z.string().datetime({ offset: true }),
   createdAt: z.string().datetime({ offset: true }),
   updatedAt: z.string().datetime({ offset: true }),
+});
+
+const receiptUploadIntentSchema = z.object({
+  uploadIntentId: z.string().uuid(),
+  uploadUrl: z.string().min(1),
+  uploadMethod: z.string().min(1),
+  uploadHeaders: z.record(z.string(), z.string()),
+  expiresAt: z.string().datetime({ offset: true }),
 });
 
 const receiptYearsSchema = z.array(z.number().int());
@@ -50,13 +78,11 @@ const receiptsSchema = z.array(receiptSchema);
 export type DevCurrentUser = z.infer<typeof currentDevUserSchema>;
 export type Receipt = z.infer<typeof receiptSchema>;
 export type UploadYearReceiptRequest = {
-  merchantName: string;
-  receiptDate: string;
-  amount: number;
   reliefCategoryId: string;
   notes?: string | null;
   file: File;
 };
+export type ReceiptUploadIntent = z.infer<typeof receiptUploadIntentSchema>;
 
 export type ReceiptMutationRequest = {
   policyYear: number;
@@ -67,6 +93,15 @@ export type ReceiptMutationRequest = {
   notes?: string | null;
   fileName?: string | null;
   fileUrl?: string | null;
+};
+
+export type ConfirmReceiptReviewRequest = {
+  merchantName?: string | null;
+  receiptDate?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+  reliefCategoryId?: string | null;
+  notes?: string | null;
 };
 
 function getHttpStatusErrorMessage(status: number): string | null {
@@ -293,31 +328,130 @@ export async function uploadReceiptForUserYear(
   year: number,
   payload: UploadYearReceiptRequest,
 ): Promise<Receipt> {
-  const formData = new FormData();
-  formData.set("merchantName", payload.merchantName);
-  formData.set("receiptDate", payload.receiptDate);
-  formData.set("amount", payload.amount.toString());
-  formData.set("reliefCategoryId", payload.reliefCategoryId);
+  const uploadIntentResponse = await fetch(
+    `${backendApiBaseUrl}/api/user-years/${year}/receipts/upload-intent`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        reliefCategoryId: payload.reliefCategoryId,
+        fileName: payload.file.name,
+        mimeType: payload.file.type || "application/octet-stream",
+        fileSizeBytes: payload.file.size,
+      }),
+    },
+  );
 
-  if (payload.notes) {
-    formData.set("notes", payload.notes);
+  if (!uploadIntentResponse.ok) {
+    throw new Error(
+      await getApiErrorMessage(
+        uploadIntentResponse,
+        `Failed to create receipt upload intent for ${year} (${uploadIntentResponse.status})`,
+      ),
+    );
   }
 
-  formData.set("file", payload.file);
+  const uploadIntentData: unknown = await uploadIntentResponse.json();
+  const uploadIntent = receiptUploadIntentSchema.parse(uploadIntentData);
 
-  const response = await fetch(`${backendApiBaseUrl}/api/user-years/${year}/receipts`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-    },
-    body: formData,
+  const uploadResponse = await fetch(uploadIntent.uploadUrl, {
+    method: uploadIntent.uploadMethod,
+    headers: uploadIntent.uploadHeaders,
+    body: payload.file,
   });
+
+  if (!uploadResponse.ok) {
+    throw new Error(
+      await getApiErrorMessage(
+        uploadResponse,
+        `Failed to upload receipt file for ${year} (${uploadResponse.status})`,
+      ),
+    );
+  }
+
+  const response = await fetch(
+    `${backendApiBaseUrl}/api/user-years/${year}/receipts/confirm-upload`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        uploadIntentId: uploadIntent.uploadIntentId,
+        notes: payload.notes ?? null,
+      }),
+    },
+  );
 
   if (!response.ok) {
     throw new Error(
       await getApiErrorMessage(
         response,
-        `Failed to upload receipt for ${year} (${response.status})`,
+        `Failed to confirm receipt upload for ${year} (${response.status})`,
+      ),
+    );
+  }
+
+  const data: unknown = await response.json();
+
+  return receiptSchema.parse(data);
+}
+
+export async function confirmReceiptReview(
+  receiptId: string,
+  payload: ConfirmReceiptReviewRequest = {},
+): Promise<Receipt> {
+  const response = await fetch(
+    `${backendApiBaseUrl}/api/receipts/${receiptId}/review/confirm`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getApiErrorMessage(
+        response,
+        `Failed to confirm receipt review (${response.status})`,
+      ),
+    );
+  }
+
+  const data: unknown = await response.json();
+
+  return receiptSchema.parse(data);
+}
+
+export async function rejectReceiptReview(
+  receiptId: string,
+  notes?: string | null,
+): Promise<Receipt> {
+  const response = await fetch(
+    `${backendApiBaseUrl}/api/receipts/${receiptId}/review/reject`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ notes: notes ?? null }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getApiErrorMessage(
+        response,
+        `Failed to reject receipt review (${response.status})`,
       ),
     );
   }

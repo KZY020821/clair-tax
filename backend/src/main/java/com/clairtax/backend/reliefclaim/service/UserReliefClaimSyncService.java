@@ -3,6 +3,7 @@ package com.clairtax.backend.reliefclaim.service;
 import com.clairtax.backend.calculator.entity.ReliefCategory;
 import com.clairtax.backend.calculator.repository.ReliefCategoryRepository;
 import com.clairtax.backend.receipt.repository.ReceiptRepository;
+import com.clairtax.backend.receipt.model.ReceiptStatus;
 import com.clairtax.backend.reliefclaim.entity.UserReliefClaim;
 import com.clairtax.backend.reliefclaim.repository.UserReliefClaimRepository;
 import com.clairtax.backend.useryear.entity.UserPolicyYear;
@@ -43,7 +44,8 @@ public class UserReliefClaimSyncService {
 
         BigDecimal claimedAmount = receiptRepository.sumAmountByUserPolicyYearIdAndReliefCategoryId(
                 userPolicyYearId,
-                reliefCategoryId
+                reliefCategoryId,
+                ReceiptStatus.VERIFIED
         );
 
         userReliefClaimRepository.findByUserPolicyYearIdAndReliefCategoryId(userPolicyYearId, reliefCategoryId)

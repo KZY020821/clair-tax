@@ -1,7 +1,9 @@
 package com.clairtax.backend.useryear.controller;
 
 import com.clairtax.backend.receipt.dto.ReceiptResponse;
-import com.clairtax.backend.receipt.dto.UploadYearReceiptRequest;
+import com.clairtax.backend.receipt.dto.ConfirmReceiptUploadRequest;
+import com.clairtax.backend.receipt.dto.CreateReceiptUploadIntentRequest;
+import com.clairtax.backend.receipt.dto.ReceiptUploadIntentResponse;
 import com.clairtax.backend.receipt.service.ReceiptService;
 import com.clairtax.backend.useryear.dto.CreateUserYearRequest;
 import com.clairtax.backend.useryear.dto.UserYearResponse;
@@ -10,11 +12,9 @@ import com.clairtax.backend.useryear.service.UserYearService;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -60,15 +60,21 @@ public class UserYearController {
         return receiptService.getReceiptsForUserYear(year);
     }
 
-    @PostMapping(
-            value = "/{year}/receipts",
-            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
-    )
-    public ResponseEntity<ReceiptResponse> uploadReceipt(
+    @PostMapping("/{year}/receipts/upload-intent")
+    public ResponseEntity<ReceiptUploadIntentResponse> createUploadIntent(
             @PathVariable Integer year,
-            @Valid @ModelAttribute UploadYearReceiptRequest request
+            @Valid @RequestBody CreateReceiptUploadIntentRequest request
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(receiptService.uploadReceiptForUserYear(year, request));
+                .body(receiptService.createUploadIntent(year, request));
+    }
+
+    @PostMapping("/{year}/receipts/confirm-upload")
+    public ResponseEntity<ReceiptResponse> confirmUpload(
+            @PathVariable Integer year,
+            @Valid @RequestBody ConfirmReceiptUploadRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(receiptService.confirmUpload(year, request));
     }
 }

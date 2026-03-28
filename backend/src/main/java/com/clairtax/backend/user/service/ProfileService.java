@@ -3,7 +3,7 @@ package com.clairtax.backend.user.service;
 import com.clairtax.backend.calculator.exception.ResourceNotFoundException;
 import com.clairtax.backend.receipt.entity.Receipt;
 import com.clairtax.backend.receipt.repository.ReceiptRepository;
-import com.clairtax.backend.receipt.storage.ReceiptStorageService;
+import com.clairtax.backend.receipt.storage.ReceiptObjectStorageService;
 import com.clairtax.backend.user.dto.ProfileResponse;
 import com.clairtax.backend.user.dto.UpdateProfileRequest;
 import com.clairtax.backend.user.entity.AppUser;
@@ -32,7 +32,7 @@ public class ProfileService {
     private final AppUserRepository appUserRepository;
     private final CurrentUserProvider currentUserProvider;
     private final ReceiptRepository receiptRepository;
-    private final ReceiptStorageService receiptStorageService;
+    private final ReceiptObjectStorageService receiptStorageService;
     private final JdbcTemplate jdbcTemplate;
     private final DataSource dataSource;
 
@@ -40,7 +40,7 @@ public class ProfileService {
             AppUserRepository appUserRepository,
             CurrentUserProvider currentUserProvider,
             ReceiptRepository receiptRepository,
-            ReceiptStorageService receiptStorageService,
+            ReceiptObjectStorageService receiptStorageService,
             JdbcTemplate jdbcTemplate,
             DataSource dataSource
     ) {
@@ -72,15 +72,70 @@ public class ProfileService {
 
     public void resetAccount() {
         AppUser user = getCurrentUserEntity();
-        List<UUID> storedReceiptIds = receiptRepository.findAllDetailedByUserId(user.getId())
+        List<String> storedReceiptIds = receiptRepository.findAllDetailedByUserId(user.getId())
                 .stream()
-                .filter(this::isStoredFile)
-                .map(Receipt::getId)
+                .map(Receipt::getS3Key)
                 .toList();
 
         deleteUserOwnedRowsIfPresent("ai_suggestions", user.getId());
         deleteUserOwnedRowsIfPresent("audit_logs", user.getId());
         deleteUserOwnedRowsIfPresent("user_tax_profile", user.getId());
+        jdbcTemplate.update(
+                """
+                        DELETE FROM receipt_review_actions
+                        WHERE receipt_id IN (
+                            SELECT id
+                            FROM receipts
+                            WHERE user_policy_year_id IN (
+                                SELECT id
+                                FROM user_policy_years
+                                WHERE user_id = ?
+                            )
+                        )
+                        """,
+                user.getId()
+        );
+        jdbcTemplate.update(
+                """
+                        DELETE FROM receipt_extraction_results
+                        WHERE receipt_id IN (
+                            SELECT id
+                            FROM receipts
+                            WHERE user_policy_year_id IN (
+                                SELECT id
+                                FROM user_policy_years
+                                WHERE user_id = ?
+                            )
+                        )
+                        """,
+                user.getId()
+        );
+        jdbcTemplate.update(
+                """
+                        DELETE FROM receipt_processing_attempts
+                        WHERE receipt_id IN (
+                            SELECT id
+                            FROM receipts
+                            WHERE user_policy_year_id IN (
+                                SELECT id
+                                FROM user_policy_years
+                                WHERE user_id = ?
+                            )
+                        )
+                        """,
+                user.getId()
+        );
+        jdbcTemplate.update(
+                """
+                        DELETE FROM receipt_upload_intents
+                        WHERE user_policy_year_id IN (
+                            SELECT id
+                            FROM user_policy_years
+                            WHERE user_id = ?
+                        )
+                        """,
+                user.getId()
+        );
         jdbcTemplate.update(
                 """
                         DELETE FROM receipts
@@ -130,14 +185,9 @@ public class ProfileService {
         );
     }
 
-    private boolean isStoredFile(Receipt receipt) {
-        return receipt.getFileUrl() != null
-                && receipt.getFileUrl().equals("/api/receipts/" + receipt.getId() + "/file");
-    }
-
-    private void tryDeleteStoredFile(UUID receiptId) {
+    private void tryDeleteStoredFile(String receiptKey) {
         try {
-            receiptStorageService.delete(receiptId);
+            receiptStorageService.delete(receiptKey);
         } catch (IOException ignored) {
         }
     }

@@ -1,18 +1,29 @@
-from datetime import datetime, timezone
-from typing import Literal
+from __future__ import annotations
+
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+
+from app.clients.backend import BackendClient
+from app.clients.storage import S3StorageClient
+from app.clients.textract import TextractExpenseClient
+from app.core.logging import configure_logging
+from app.core.settings import Settings, get_settings
+from app.models.extraction import DemoAiSummary
+from app.services.processing import ReceiptProcessingService
+
+configure_logging()
 
 
-class DemoAiSummary(BaseModel):
-    service: str
-    status: Literal["ready"]
-    detected_receipt_count: int
-    extracted_total_amount: float
-    suggestion_preview: str
-    generated_at: datetime
+def build_processing_service(settings: Settings | None = None) -> ReceiptProcessingService:
+    resolved_settings = settings or get_settings()
+    return ReceiptProcessingService(
+        settings=resolved_settings,
+        backend_client=BackendClient(resolved_settings),
+        storage_client=S3StorageClient(resolved_settings),
+        extraction_client=TextractExpenseClient(resolved_settings),
+    )
 
 
 app = FastAPI(title="Clair Tax AI Service")
@@ -30,10 +41,10 @@ DEMO_AI_SUMMARY = DemoAiSummary(
     detected_receipt_count=3,
     extracted_total_amount=1820.50,
     suggestion_preview=(
-        "Lifestyle receipts were grouped successfully and look ready for user review "
-        "before tax filing."
+        "Queued receipt uploads move through extraction and wait for human review "
+        "before contributing to tax relief totals."
     ),
-    generated_at=datetime(2026, 3, 20, 0, 0, tzinfo=timezone.utc),
+    generated_at=datetime(2026, 3, 27, 0, 0, tzinfo=UTC),
 )
 
 

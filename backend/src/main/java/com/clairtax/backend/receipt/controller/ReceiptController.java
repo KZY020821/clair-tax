@@ -1,7 +1,9 @@
 package com.clairtax.backend.receipt.controller;
 
+import com.clairtax.backend.receipt.dto.ConfirmReceiptReviewRequest;
 import com.clairtax.backend.receipt.dto.CreateReceiptRequest;
 import com.clairtax.backend.receipt.dto.ReceiptResponse;
+import com.clairtax.backend.receipt.dto.RejectReceiptReviewRequest;
 import com.clairtax.backend.receipt.dto.UpdateReceiptRequest;
 import com.clairtax.backend.receipt.service.ReceiptService;
 import jakarta.validation.Valid;
@@ -80,6 +82,22 @@ public class ReceiptController {
             @Valid @RequestBody UpdateReceiptRequest request
     ) {
         return receiptService.updateReceipt(id, request);
+    }
+
+    @PostMapping("/{id}/review/confirm")
+    public ReceiptResponse confirmReceiptReview(
+            @PathVariable UUID id,
+            @Valid @RequestBody ConfirmReceiptReviewRequest request
+    ) {
+        return receiptService.confirmReview(id, request);
+    }
+
+    @PostMapping("/{id}/review/reject")
+    public ReceiptResponse rejectReceiptReview(
+            @PathVariable UUID id,
+            @Valid @RequestBody RejectReceiptReviewRequest request
+    ) {
+        return receiptService.rejectReview(id, request);
     }
 
     @DeleteMapping("/{id}")

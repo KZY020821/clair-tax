@@ -1,25 +1,26 @@
 package com.clairtax.backend.useryear;
 
 import com.clairtax.backend.user.repository.AppUserRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
-import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -43,13 +44,23 @@ class UserYearControllerIntegrationTest {
     @Autowired
     private AppUserRepository appUserRepository;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @Value("${clair.dev-user.email}")
     private String devUserEmail;
+
+    @Value("${clair.receipts.internal-api-token}")
+    private String internalApiToken;
 
     private UUID devUserId;
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.update("DELETE FROM receipt_review_actions");
+        jdbcTemplate.update("DELETE FROM receipt_extraction_results");
+        jdbcTemplate.update("DELETE FROM receipt_processing_attempts");
+        jdbcTemplate.update("DELETE FROM receipt_upload_intents");
         jdbcTemplate.update("DELETE FROM user_relief_claims");
         jdbcTemplate.update("DELETE FROM receipts");
         jdbcTemplate.update("DELETE FROM user_policy_years");
@@ -114,7 +125,7 @@ class UserYearControllerIntegrationTest {
     }
 
     @Test
-    void workspaceShowsCategorySummaryAndUploadRefreshesTotals() throws Exception {
+    void workspaceShowsCategorySummaryUploadReviewFlow() throws Exception {
         insertUserPolicyYear(devUserId, POLICY_YEAR_2025_ID);
 
         mockMvc.perform(get("/api/user-years/2025"))
@@ -122,32 +133,99 @@ class UserYearControllerIntegrationTest {
                 .andExpect(jsonPath("$.year", is(2025)))
                 .andExpect(jsonPath("$.totalClaimedAmount", is(0)))
                 .andExpect(jsonPath("$.totalReceiptCount", is(0)))
-                .andExpect(jsonPath("$.categories.length()", is(2)))
-                .andExpect(jsonPath("$.categories[0].reliefCategoryId", is(LIFESTYLE_RELIEF_ID.toString())))
-                .andExpect(jsonPath("$.categories[0].claimedAmount", is(0)))
-                .andExpect(jsonPath("$.categories[0].remainingAmount", is(2500.00)))
-                .andExpect(jsonPath("$.categories[0].receiptCount", is(0)));
+                .andExpect(jsonPath("$.categories.length()", is(2)));
 
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "clinic.pdf",
-                "application/pdf",
-                "receipt".getBytes()
+        JsonNode uploadIntentResponse = objectMapper.readTree(
+                mockMvc.perform(post("/api/user-years/{year}/receipts/upload-intent", 2025)
+                                .contentType(APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "reliefCategoryId": "%s",
+                                          "fileName": "clinic.pdf",
+                                          "mimeType": "application/pdf",
+                                          "fileSizeBytes": 7
+                                        }
+                                        """.formatted(LIFESTYLE_RELIEF_ID)))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString()
         );
 
-        mockMvc.perform(multipart("/api/user-years/{year}/receipts", 2025)
-                        .file(file)
-                        .param("merchantName", "Clinic")
-                        .param("receiptDate", "2025-06-12")
-                        .param("amount", "120.50")
-                        .param("reliefCategoryId", LIFESTYLE_RELIEF_ID.toString())
-                        .param("notes", "Follow-up visit"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.policyYear", is(2025)))
+        mockMvc.perform(put(uploadIntentResponse.get("uploadUrl").asText())
+                        .contentType(MediaType.APPLICATION_PDF)
+                        .content("receipt".getBytes()))
+                .andExpect(status().isNoContent());
+
+        JsonNode confirmedReceipt = objectMapper.readTree(
+                mockMvc.perform(post("/api/user-years/{year}/receipts/confirm-upload", 2025)
+                                .contentType(APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "uploadIntentId": "%s",
+                                          "notes": "Follow-up visit"
+                                        }
+                                        """.formatted(uploadIntentResponse.get("uploadIntentId").asText())))
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.status", is("processing")))
+                        .andExpect(jsonPath("$.amount").isEmpty())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString()
+        );
+
+        String receiptId = confirmedReceipt.get("id").asText();
+        String jobId = jdbcTemplate.queryForObject(
+                "SELECT job_id FROM receipt_processing_attempts WHERE receipt_id = ?",
+                String.class,
+                UUID.fromString(receiptId)
+        );
+
+        mockMvc.perform(post("/api/internal/receipts/{receiptId}/processing-attempts", receiptId)
+                        .header("X-Clair-Internal-Token", internalApiToken)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jobId": "%s",
+                                  "status": "processing"
+                                }
+                                """.formatted(jobId)))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(post("/api/internal/receipts/{receiptId}/extraction-results", receiptId)
+                        .header("X-Clair-Internal-Token", internalApiToken)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jobId": "%s",
+                                  "totalAmount": "120.50",
+                                  "receiptDate": "2025-06-12",
+                                  "merchantName": "Clinic",
+                                  "currency": "MYR",
+                                  "confidenceScore": "0.9600",
+                                  "warnings": [],
+                                  "rawPayloadJson": "{\\"provider\\":\\"test\\"}",
+                                  "providerName": "test-provider",
+                                  "providerVersion": "2026-03-27",
+                                  "processedAt": "2026-03-27T00:00:00Z"
+                                }
+                                """.formatted(jobId)))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get("/api/user-years/2025/receipts"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", is(1)))
+                .andExpect(jsonPath("$[0].status", is("processed")))
+                .andExpect(jsonPath("$[0].latestExtraction.totalAmount", is(120.50)))
+                .andExpect(jsonPath("$[0].latestExtraction.merchantName", is("Clinic")));
+
+        mockMvc.perform(post("/api/receipts/{receiptId}/review/confirm", receiptId)
+                        .contentType(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("verified")))
                 .andExpect(jsonPath("$.merchantName", is("Clinic")))
-                .andExpect(jsonPath("$.amount", is(120.50)))
-                .andExpect(jsonPath("$.fileName", is("clinic.pdf")))
-                .andExpect(jsonPath("$.fileUrl", containsString("/api/receipts/")));
+                .andExpect(jsonPath("$.amount", is(120.50)));
 
         mockMvc.perform(get("/api/user-years/2025"))
                 .andExpect(status().isOk())
@@ -156,11 +234,197 @@ class UserYearControllerIntegrationTest {
                 .andExpect(jsonPath("$.categories[0].claimedAmount", is(120.50)))
                 .andExpect(jsonPath("$.categories[0].remainingAmount", is(2379.50)))
                 .andExpect(jsonPath("$.categories[0].receiptCount", is(1)));
+    }
 
-        mockMvc.perform(get("/api/user-years/2025/receipts"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()", is(1)))
-                .andExpect(jsonPath("$[0].merchantName", is("Clinic")));
+    @Test
+    void internalTrainingExportReturnsReviewedReceiptLabels() throws Exception {
+        insertUserPolicyYear(devUserId, POLICY_YEAR_2025_ID);
+
+        JsonNode verifiedUploadIntent = objectMapper.readTree(
+                mockMvc.perform(post("/api/user-years/{year}/receipts/upload-intent", 2025)
+                                .contentType(APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "reliefCategoryId": "%s",
+                                          "fileName": "verified.pdf",
+                                          "mimeType": "application/pdf",
+                                          "fileSizeBytes": 7
+                                        }
+                                        """.formatted(LIFESTYLE_RELIEF_ID)))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString()
+        );
+
+        mockMvc.perform(put(verifiedUploadIntent.get("uploadUrl").asText())
+                        .contentType(MediaType.APPLICATION_PDF)
+                        .content("receipt".getBytes()))
+                .andExpect(status().isNoContent());
+
+        JsonNode verifiedReceipt = objectMapper.readTree(
+                mockMvc.perform(post("/api/user-years/{year}/receipts/confirm-upload", 2025)
+                                .contentType(APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "uploadIntentId": "%s"
+                                        }
+                                        """.formatted(verifiedUploadIntent.get("uploadIntentId").asText())))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString()
+        );
+        String verifiedReceiptId = verifiedReceipt.get("id").asText();
+        String verifiedJobId = jdbcTemplate.queryForObject(
+                "SELECT job_id FROM receipt_processing_attempts WHERE receipt_id = ?",
+                String.class,
+                UUID.fromString(verifiedReceiptId)
+        );
+
+        mockMvc.perform(post("/api/internal/receipts/{receiptId}/extraction-results", verifiedReceiptId)
+                        .header("X-Clair-Internal-Token", internalApiToken)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jobId": "%s",
+                                  "totalAmount": "88.90",
+                                  "receiptDate": "2025-05-12",
+                                  "merchantName": "Bookshop",
+                                  "currency": "MYR",
+                                  "confidenceScore": "0.9700",
+                                  "warnings": [],
+                                  "rawPayloadJson": "{\\"provider_payload\\":{\\"ExpenseDocuments\\":[]}}",
+                                  "providerName": "test-provider",
+                                  "providerVersion": "2026-03-27",
+                                  "processedAt": "2026-03-27T00:00:00Z"
+                                }
+                                """.formatted(verifiedJobId)))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(post("/api/receipts/{receiptId}/review/confirm", verifiedReceiptId)
+                        .contentType(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk());
+
+        JsonNode rejectedUploadIntent = objectMapper.readTree(
+                mockMvc.perform(post("/api/user-years/{year}/receipts/upload-intent", 2025)
+                                .contentType(APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "reliefCategoryId": "%s",
+                                          "fileName": "invalid.pdf",
+                                          "mimeType": "application/pdf",
+                                          "fileSizeBytes": 7
+                                        }
+                                        """.formatted(MEDICAL_RELIEF_ID)))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString()
+        );
+
+        mockMvc.perform(put(rejectedUploadIntent.get("uploadUrl").asText())
+                        .contentType(MediaType.APPLICATION_PDF)
+                        .content("invalid".getBytes()))
+                .andExpect(status().isNoContent());
+
+        JsonNode rejectedReceipt = objectMapper.readTree(
+                mockMvc.perform(post("/api/user-years/{year}/receipts/confirm-upload", 2025)
+                                .contentType(APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "uploadIntentId": "%s"
+                                        }
+                                        """.formatted(rejectedUploadIntent.get("uploadIntentId").asText())))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString()
+        );
+        String rejectedReceiptId = rejectedReceipt.get("id").asText();
+        String rejectedJobId = jdbcTemplate.queryForObject(
+                "SELECT job_id FROM receipt_processing_attempts WHERE receipt_id = ?",
+                String.class,
+                UUID.fromString(rejectedReceiptId)
+        );
+
+        mockMvc.perform(post("/api/internal/receipts/{receiptId}/extraction-results", rejectedReceiptId)
+                        .header("X-Clair-Internal-Token", internalApiToken)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jobId": "%s",
+                                  "totalAmount": null,
+                                  "receiptDate": null,
+                                  "merchantName": null,
+                                  "currency": "MYR",
+                                  "confidenceScore": "0.2000",
+                                  "warnings": ["Receipt was too blurry"],
+                                  "rawPayloadJson": "{\\"provider_payload\\":{\\"ExpenseDocuments\\":[]}}",
+                                  "providerName": "test-provider",
+                                  "providerVersion": "2026-03-27",
+                                  "processedAt": "2026-03-27T00:01:00Z",
+                                  "errorCode": "unreadable_receipt",
+                                  "errorMessage": "The uploaded file did not contain readable receipt text."
+                                }
+                                """.formatted(rejectedJobId)))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(post("/api/receipts/{receiptId}/review/reject", rejectedReceiptId)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "notes": "Marked invalid after review",
+                                  "invalidReasonCode": "unreadable_receipt",
+                                  "invalidReasonMessage": "The uploaded file did not contain readable receipt text."
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        JsonNode export = objectMapper.readTree(
+                mockMvc.perform(get("/api/internal/receipts/training-examples")
+                                .header("X-Clair-Internal-Token", internalApiToken))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString()
+        );
+
+        if (export.size() != 2) {
+            throw new AssertionError("Expected two reviewed training examples");
+        }
+
+        JsonNode verifiedExample = null;
+        JsonNode rejectedExample = null;
+        for (JsonNode example : export) {
+            if (example.get("receiptId").asText().equals(verifiedReceiptId)) {
+                verifiedExample = example;
+            }
+            if (example.get("receiptId").asText().equals(rejectedReceiptId)) {
+                rejectedExample = example;
+            }
+        }
+
+        if (verifiedExample == null || rejectedExample == null) {
+            throw new AssertionError("Expected both reviewed receipts in the export");
+        }
+
+        if (!verifiedExample.get("isValidReceipt").asBoolean()) {
+            throw new AssertionError("Expected verified receipt export to be labeled valid");
+        }
+        if (Math.abs(verifiedExample.get("correctTotalAmount").asDouble() - 88.90) > 0.001) {
+            throw new AssertionError("Expected verified export to include corrected amount");
+        }
+        if (!"2025-05-12".equals(verifiedExample.get("correctReceiptDate").asText())) {
+            throw new AssertionError("Expected verified export to include corrected date");
+        }
+        if (rejectedExample.get("isValidReceipt").asBoolean()) {
+            throw new AssertionError("Expected rejected receipt export to be labeled invalid");
+        }
+        if (!"unreadable_receipt".equals(rejectedExample.get("invalidReason").asText())) {
+            throw new AssertionError("Expected rejected export to include the invalid reason code");
+        }
     }
 
     @Test
