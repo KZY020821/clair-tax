@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { backendApiBaseUrl } from "./backend-api";
+import { backendFetch } from "./backend-api";
 
 const policyYearSchema = z.object({
   id: z.string().uuid(),
@@ -13,7 +13,7 @@ export const policyYearsSchema = z.array(policyYearSchema);
 export type PolicyYear = z.infer<typeof policyYearSchema>;
 
 export async function fetchPolicyYears(): Promise<PolicyYear[]> {
-  const response = await fetch(`${backendApiBaseUrl}/api/policy-years`, {
+  const response = await backendFetch("/api/policy-years", {
     headers: {
       Accept: "application/json",
     },

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { backendApiBaseUrl } from "./backend-api";
+import { backendFetch } from "./backend-api";
 
 const apiErrorSchema = z.object({
   message: z.string().min(1),
@@ -50,7 +50,7 @@ async function getApiErrorMessage(
 }
 
 export async function fetchProfile(): Promise<UserProfile> {
-  const response = await fetch(`${backendApiBaseUrl}/api/profile`, {
+  const response = await backendFetch("/api/profile", {
     headers: {
       Accept: "application/json",
     },
@@ -73,7 +73,7 @@ export async function fetchProfile(): Promise<UserProfile> {
 export async function updateProfile(
   payload: UpdateProfileRequest,
 ): Promise<UserProfile> {
-  const response = await fetch(`${backendApiBaseUrl}/api/profile`, {
+  const response = await backendFetch("/api/profile", {
     method: "PUT",
     headers: {
       Accept: "application/json",
@@ -97,7 +97,7 @@ export async function updateProfile(
 }
 
 export async function deleteAccount(): Promise<void> {
-  const response = await fetch(`${backendApiBaseUrl}/api/profile/account`, {
+  const response = await backendFetch("/api/profile/account", {
     method: "DELETE",
   });
 

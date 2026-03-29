@@ -39,6 +39,10 @@ The second migration seeds demo rows, including `policy_year` records that back 
 
 ## Demo endpoint
 
+- `POST /api/auth/magic-link/request`
+- `GET /api/auth/session`
+- `GET /api/auth/magic-link/verify?token=...`
+- `POST /api/auth/logout`
 - `GET /api/policy-years`
 - `GET /api/policies/{year}`
 - `POST /api/calculator/calculate`
@@ -61,18 +65,23 @@ The second migration seeds demo rows, including `policy_year` records that back 
 
 These endpoints are available when the backend is started with a database-backed profile such as `postgres`.
 
-## Temporary dev account
+## Local auth modes
 
-Receipt workflows currently run against a dev-only current user instead of real authentication.
+The backend now supports two localhost-oriented auth paths:
+
+- Web localhost auth can use magic-link sessions through `/api/auth/magic-link/request`, `/api/auth/session`, `/api/auth/magic-link/verify`, and `/api/auth/logout`.
+- `/api/dev/me` still exists for local mobile fallback flows, debug visibility, and destructive-reset scenarios where the temporary local account is still in use.
+
+## Temporary local account fallback
 
 - Default dev email: `dev@taxrelief.local`
 - Config override: `CLAIR_DEV_USER_EMAIL`
 - Bootstrap behavior: on database-backed startup, the backend automatically creates the dev user if it does not already exist
-- Resolution behavior: receipt endpoints always operate on the current configured dev user and never accept `userId` from the client
-- Saved profile behavior: the current dev user also stores disability, marital status, spouse, and children fields used by the calculator and year workspace
+- Resolution behavior: if no authenticated browser session is present, current-user endpoints fall back to the configured local account and never accept `userId` from the client
+- Saved profile behavior: the temporary local account also stores disability, marital status, spouse, and children fields used by the calculator and year workspace
 - Local receipt storage path: `CLAIR_RECEIPTS_STORAGE_PATH` (defaults to `/tmp/clair-tax-receipts`)
 
-Debug endpoint:
+Debug and fallback endpoint:
 
 - `GET /api/dev/me`
 
@@ -163,7 +172,7 @@ Validation behaviour:
 
 ## Profile endpoints
 
-The current dev user has a saved household profile used by the calculator and year workspace.
+The current active user has a saved household profile used by the calculator and year workspace. On localhost web this can be the signed-in magic-link session, while mobile and other local fallback flows can still resolve to the temporary local account.
 
 ### `GET /api/profile`
 
@@ -197,7 +206,7 @@ Example request:
 
 ### `DELETE /api/profile/account`
 
-This is a dev-only destructive reset. It removes the current user's saved year workspaces, receipts, receipt files, and saved profile fields, then leaves the fixed dev email ready to use again with the default profile.
+This removes the current active user's saved year workspaces, receipts, receipt files, and saved profile fields. In local fallback flows it effectively resets the temporary local account back to the default profile.
 
 ## Policy endpoint
 
@@ -253,11 +262,11 @@ The frontend flow is:
 
 ## Year workspace endpoints
 
-All year-workspace endpoints are scoped to the current dev user.
+All year-workspace endpoints are scoped to the current active user.
 
 ### `GET /api/user-years`
 
-Returns the year workspaces already created by the current dev user, sorted descending.
+Returns the year workspaces already created by the current active user, sorted descending.
 
 Example response:
 
@@ -275,7 +284,7 @@ Example response:
 
 ### `POST /api/user-years`
 
-Creates the requested year workspace for the current dev user. If the workspace already exists, the existing row is returned.
+Creates the requested year workspace for the current active user. If the workspace already exists, the existing row is returned.
 
 Example request:
 
@@ -287,11 +296,11 @@ Example request:
 
 ### `GET /api/user-years/{year}`
 
-Returns the current dev user's year summary, including only the relief categories relevant to the saved profile for that policy year, plus each category's cap, claimed amount, remaining amount, and receipt count.
+Returns the current active user's year summary, including only the relief categories relevant to the saved profile for that policy year, plus each category's cap, claimed amount, remaining amount, and receipt count.
 
 ### `GET /api/user-years/{year}/receipts`
 
-Returns the current dev user's receipts for the requested year workspace.
+Returns the current active user's receipts for the requested year workspace.
 
 ### `POST /api/user-years/{year}/receipts`
 
@@ -325,11 +334,11 @@ Uploaded files are stored locally in dev mode and returned with a `fileUrl` such
 
 ## Receipt endpoints
 
-All receipt endpoints are scoped to the current dev user.
+All receipt endpoints are scoped to the current active user.
 
 ### `GET /api/receipts/years`
 
-Returns the distinct assessment years where the current dev user already has at least one receipt.
+Returns the distinct assessment years where the current active user already has at least one receipt.
 The list is sorted descending.
 
 Example response:
@@ -340,9 +349,9 @@ Example response:
 
 ### `GET /api/receipts?year=2025`
 
-Returns the current dev user's receipts for the requested year.
+Returns the current active user's receipts for the requested year.
 
-If `year` is omitted, the API returns all receipts for the current dev user across all years, ordered by year descending and then receipt date descending.
+If `year` is omitted, the API returns all receipts for the current active user across all years, ordered by year descending and then receipt date descending.
 
 Example response:
 
@@ -367,15 +376,15 @@ Example response:
 
 ### `GET /api/receipts/{id}`
 
-Returns one receipt only if it belongs to the current dev user. Other users' receipts return `404`.
+Returns one receipt only if it belongs to the current active user. Other users' receipts return `404`.
 
 ### `GET /api/receipts/{id}/file`
 
-Returns the stored local file for a receipt only if that receipt belongs to the current dev user and was uploaded through the year workspace flow.
+Returns the stored local file for a receipt only if that receipt belongs to the current active user and was uploaded through the year workspace flow.
 
 ### `POST /api/receipts`
 
-Creates a receipt for the current dev user.
+Creates a receipt for the current active user.
 This JSON endpoint remains useful for direct CRUD and testing. The primary UI flow now goes through `/api/user-years` and year-scoped upload.
 
 Example request:
@@ -395,11 +404,11 @@ Example request:
 
 ### `PUT /api/receipts/{id}`
 
-Updates a receipt only if it belongs to the current dev user.
+Updates a receipt only if it belongs to the current active user.
 
 ### `DELETE /api/receipts/{id}`
 
-Deletes a receipt only if it belongs to the current dev user.
+Deletes a receipt only if it belongs to the current active user.
 
 ### Receipt validation
 
@@ -408,4 +417,4 @@ Deletes a receipt only if it belongs to the current dev user.
 - `reliefCategoryId` is optional
 - if `reliefCategoryId` is provided, it must exist and belong to the same `policyYear`
 - year-scoped uploads require a receipt file and a `reliefCategoryId`
-- receipts are always filtered by the current dev user, even in this temporary mode
+- receipts are always filtered by the current active user, whether that resolves to a browser session or the temporary local fallback account

@@ -137,7 +137,6 @@ export default function ProfileSettings() {
       setShowDeleteModal(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["profile"] }),
-        queryClient.invalidateQueries({ queryKey: ["dev-current-user"] }),
         queryClient.invalidateQueries({ queryKey: ["user-years"] }),
         queryClient.invalidateQueries({ queryKey: ["user-year-workspace"] }),
         queryClient.invalidateQueries({ queryKey: ["user-year-receipts"] }),
@@ -153,7 +152,7 @@ export default function ProfileSettings() {
         <p className="app-eyebrow">Profile</p>
         <h1 className="mt-3 text-4xl text-brand-black">Loading saved profile...</h1>
         <p className="mt-3 text-sm leading-7 text-brand-muted">
-          Pulling the current dev account details and household settings.
+          Pulling the current signed-in account details and household settings.
         </p>
       </section>
     );
@@ -187,11 +186,11 @@ export default function ProfileSettings() {
             <p className="app-eyebrow">Profile</p>
             <h1 className="mt-3 text-4xl text-brand-black">Saved filing profile</h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-brand-muted">
-              This dev-only profile drives family and disability relief visibility
+              This saved profile drives family and disability relief visibility
               across the calculator and year workspace.
             </p>
           </div>
-          <span className="app-pill-blue">Dev account</span>
+          <span className="app-pill-blue">Signed-in account</span>
         </div>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -201,7 +200,7 @@ export default function ProfileSettings() {
             </p>
             <p className="mt-3 text-2xl text-brand-black">{profile.email}</p>
             <p className="mt-3 text-sm leading-6 text-brand-muted">
-              The app is still using the temporary dev-only current user flow.
+              This email is the active browser session for your current Clair Tax workspace.
             </p>
           </article>
 
@@ -373,10 +372,10 @@ export default function ProfileSettings() {
 
       <section className="app-panel p-6 sm:p-7">
         <p className="app-eyebrow">Danger</p>
-        <h2 className="mt-3 text-3xl text-brand-black">Reset dev account data</h2>
+        <h2 className="mt-3 text-3xl text-brand-black">Reset account data</h2>
         <p className="mt-3 max-w-3xl text-sm leading-7 text-brand-muted">
           This removes saved year workspaces, receipts, receipt files, and stored
-          profile values for the current dev account. The fixed dev email stays
+          profile values for the current signed-in account. The email itself stays
           available after the reset.
         </p>
         <button
@@ -394,7 +393,7 @@ export default function ProfileSettings() {
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-brand-black/45 px-4">
           <div className="w-full max-w-lg rounded-panel border border-brand-line bg-brand-white p-6 shadow-accent">
             <p className="app-eyebrow">Confirm Reset</p>
-            <h2 className="mt-3 text-3xl text-brand-black">Delete all dev account data?</h2>
+            <h2 className="mt-3 text-3xl text-brand-black">Delete all account data?</h2>
             <p className="mt-3 text-sm leading-7 text-brand-muted">
               This clears the saved profile, year workspaces, receipts, and stored
               receipt files for {profile.email}. This action cannot be undone.

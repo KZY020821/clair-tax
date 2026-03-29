@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { backendApiBaseUrl } from "./backend-api";
+import { backendFetch } from "./backend-api";
 
 const numericValueSchema = z
   .union([z.number(), z.string()])
@@ -169,7 +169,7 @@ async function getApiErrorMessage(
 }
 
 export async function fetchPolicyYear(year: number): Promise<PolicyResponse> {
-  const response = await fetch(`${backendApiBaseUrl}/api/policies/${year}`, {
+  const response = await backendFetch(`/api/policies/${year}`, {
     headers: {
       Accept: "application/json",
     },
@@ -192,7 +192,7 @@ export async function fetchPolicyYear(year: number): Promise<PolicyResponse> {
 export async function calculateTax(
   payload: CalculatorRequest,
 ): Promise<CalculatorResponse> {
-  const response = await fetch(`${backendApiBaseUrl}/api/calculator/calculate`, {
+  const response = await backendFetch("/api/calculator/calculate", {
     method: "POST",
     headers: {
       Accept: "application/json",

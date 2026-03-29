@@ -61,14 +61,14 @@ export default function CreateYearWorkspace() {
     <div className="space-y-6">
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.95fr)]">
         <article className="app-panel p-6 sm:p-7">
-          <p className="app-eyebrow">Temporary Account</p>
+          <p className="app-eyebrow">Year Workspace</p>
           <h2 className="mt-3 text-3xl text-brand-black">
             Open a year workspace before adding receipts
           </h2>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-brand-muted">
-            This route uses the temporary developer account already shown in the
-            shell. Pick a policy year from backend data, create the workspace
-            once, and Clair Tax will keep that year available in the sidebar.
+            Pick a policy year from backend data, create the workspace once,
+            and Clair Tax will keep that year available in the sidebar for the
+            signed-in account.
           </p>
         </article>
 
@@ -79,8 +79,8 @@ export default function CreateYearWorkspace() {
           </p>
           <p className="mt-3 text-sm leading-7 text-brand-muted">
             {existingYears.length > 0
-              ? "These are the year workspaces already created for the current dev user."
-              : "No year workspaces exist yet for the current dev user."}
+              ? "These are the year workspaces already created for this signed-in account."
+              : "No year workspaces exist yet for this signed-in account."}
           </p>
         </article>
       </section>
@@ -194,7 +194,7 @@ export default function CreateYearWorkspace() {
           <p className="app-eyebrow">Created Years</p>
           <h2 className="mt-3 text-3xl text-brand-black">Sidebar-ready workspaces</h2>
           <p className="mt-3 text-sm leading-7 text-brand-muted">
-            Only years the current dev user has created will appear in the year
+            Only years created for the signed-in account will appear in the year
             rail and the year routes.
           </p>
 

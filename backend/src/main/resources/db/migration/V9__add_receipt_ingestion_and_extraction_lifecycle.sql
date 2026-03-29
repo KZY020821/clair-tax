@@ -1,4 +1,6 @@
 ALTER TABLE receipts
+    ADD COLUMN uploaded_at TIMESTAMPTZ,
+    ADD COLUMN status VARCHAR(16),
     ADD COLUMN currency_code VARCHAR(3),
     ADD COLUMN s3_bucket VARCHAR(255),
     ADD COLUMN s3_key VARCHAR(255),
@@ -9,27 +11,28 @@ ALTER TABLE receipts
     ADD COLUMN processing_error_message TEXT;
 
 UPDATE receipts
-SET s3_bucket = 'clair-tax-receipts',
+SET uploaded_at = COALESCE(created_at, CURRENT_TIMESTAMP),
+    status = CASE
+        WHEN merchant_name IS NOT NULL AND receipt_date IS NOT NULL AND amount IS NOT NULL THEN 'verified'
+        ELSE 'uploaded'
+    END,
+    s3_bucket = 'clair-tax-receipts',
     s3_key = 'legacy/' || id::text,
     mime_type = 'application/octet-stream',
     file_size_bytes = 0,
-    sha256_hash = encode(digest(id::text, 'sha256'), 'hex'),
-    status = CASE status
-        WHEN 'pending' THEN 'uploaded'
-        WHEN 'processed' THEN 'processed'
-        WHEN 'verified' THEN 'verified'
-        ELSE 'uploaded'
-    END;
+    sha256_hash = encode(digest(id::text, 'sha256'), 'hex');
 
 ALTER TABLE receipts
     ALTER COLUMN merchant_name DROP NOT NULL,
     ALTER COLUMN receipt_date DROP NOT NULL,
     ALTER COLUMN amount DROP NOT NULL,
+    ALTER COLUMN uploaded_at SET NOT NULL,
     ALTER COLUMN s3_bucket SET NOT NULL,
     ALTER COLUMN s3_key SET NOT NULL,
     ALTER COLUMN mime_type SET NOT NULL,
     ALTER COLUMN file_size_bytes SET NOT NULL,
-    ALTER COLUMN sha256_hash SET NOT NULL;
+    ALTER COLUMN sha256_hash SET NOT NULL,
+    ALTER COLUMN status SET NOT NULL;
 
 ALTER TABLE receipts
     DROP CONSTRAINT IF EXISTS chk_receipts_status;

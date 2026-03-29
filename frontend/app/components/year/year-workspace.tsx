@@ -500,9 +500,8 @@ export default function YearWorkspace({
             <p className="app-eyebrow">Year Workspace</p>
             <h1 className="mt-3 text-4xl text-brand-black">Assessment year {year}</h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-brand-muted">
-              This page is the dev-only receipt workspace for the selected year.
               Categories, caps, and current claim totals come from backend policy
-              data plus the receipts already stored for this year.
+              data plus the receipts already stored for this year for the signed-in account.
             </p>
           </div>
           <div className="rounded-card border border-brand-line bg-brand-ice px-5 py-4">

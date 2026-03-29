@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { backendApiBaseUrl } from "./backend-api";
+import { backendFetch } from "./backend-api";
 
 const numericValueSchema = z
   .union([z.number(), z.string()])
@@ -78,7 +78,7 @@ async function getApiErrorMessage(
 }
 
 export async function fetchUserYears(): Promise<UserYear[]> {
-  const response = await fetch(`${backendApiBaseUrl}/api/user-years`, {
+  const response = await backendFetch("/api/user-years", {
     headers: {
       Accept: "application/json",
     },
@@ -99,7 +99,7 @@ export async function fetchUserYears(): Promise<UserYear[]> {
 }
 
 export async function createUserYear(policyYear: number): Promise<UserYear> {
-  const response = await fetch(`${backendApiBaseUrl}/api/user-years`, {
+  const response = await backendFetch("/api/user-years", {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -125,7 +125,7 @@ export async function createUserYear(policyYear: number): Promise<UserYear> {
 export async function fetchUserYearWorkspace(
   year: number,
 ): Promise<UserYearWorkspace> {
-  const response = await fetch(`${backendApiBaseUrl}/api/user-years/${year}`, {
+  const response = await backendFetch(`/api/user-years/${year}`, {
     headers: {
       Accept: "application/json",
     },

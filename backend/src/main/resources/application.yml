@@ -31,6 +31,11 @@ server:
   port: ${SERVER_PORT:8080}
 
 clair:
+  auth:
+    frontend-base-url: ${CLAIR_AUTH_FRONTEND_BASE_URL:http://localhost:3000}
+    magic-link-ttl: ${CLAIR_AUTH_MAGIC_LINK_TTL:PT15M}
+    session-ttl: ${CLAIR_AUTH_SESSION_TTL:P30D}
+    cookie-name: ${CLAIR_AUTH_COOKIE_NAME:clair_tax_session}
   dev-user:
     email: ${CLAIR_DEV_USER_EMAIL:dev@taxrelief.local}
   receipts:

@@ -1,10 +1,24 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
-import { fetchDevCurrentUser } from "../lib/receipts";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  startTransition,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+  type SVGProps,
+} from "react";
+import {
+  authSessionQueryKey,
+  broadcastAuthEvent,
+  fetchAuthSession,
+  logoutCurrentSession,
+  subscribeToAuthEvents,
+} from "../lib/auth";
 import { fetchUserYears } from "../lib/user-years";
 
 type AppShellProps = Readonly<{
@@ -38,7 +52,11 @@ function CalculatorIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...props}>
       <rect x="5" y="3.5" width="14" height="17" rx="2" strokeWidth="1.8" />
-      <path d="M8 7.5h8M8 11.5h2M12 11.5h2M16 11.5h0M8 15.5h2M12 15.5h2M16 15.5h0" strokeLinecap="round" strokeWidth="1.8" />
+      <path
+        d="M8 7.5h8M8 11.5h2M12 11.5h2M16 11.5h0M8 15.5h2M12 15.5h2M16 15.5h0"
+        strokeLinecap="round"
+        strokeWidth="1.8"
+      />
     </svg>
   );
 }
@@ -80,6 +98,47 @@ function SidebarIcon({
   );
 }
 
+function AuthLoadingScreen({ label }: Readonly<{ label: string }>) {
+  return (
+    <div className="flex min-h-screen items-center justify-center px-4 py-10 sm:px-6">
+      <section className="app-panel flex w-full max-w-xl flex-col gap-4 p-8 text-center sm:p-10">
+        <span className="app-pill-blue self-center">Clair Tax</span>
+        <h1 className="text-3xl text-brand-black sm:text-4xl">
+          {label}
+        </h1>
+        <p className="text-sm leading-7 text-brand-muted">
+          We&apos;re checking the current browser session so your dashboard stays in sync.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function AuthErrorScreen({
+  onRetry,
+}: Readonly<{
+  onRetry: () => void;
+}>) {
+  return (
+    <div className="flex min-h-screen items-center justify-center px-4 py-10 sm:px-6">
+      <section className="app-panel flex w-full max-w-xl flex-col gap-4 p-8 text-center sm:p-10">
+        <span className="app-pill">Session error</span>
+        <h1 className="text-3xl text-brand-black sm:text-4xl">
+          We couldn&apos;t reach the sign-in service.
+        </h1>
+        <p className="text-sm leading-7 text-brand-muted">
+          Check that the backend is running on localhost, then retry the session check.
+        </p>
+        <div className="flex justify-center">
+          <button type="button" onClick={onRetry} className="app-button-primary">
+            Retry session check
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function isActivePath(pathname: string, href: string) {
   return href === "/" ? pathname === href : pathname.startsWith(href);
 }
@@ -103,15 +162,17 @@ function FooterTextLink({
 
 export default function AppShell({ children, currentYear }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const hasBroadcastSignedInRef = useRef(false);
+  const isLoginRoute = pathname === "/login";
 
-  // Auto-close sidebar on route change (mobile)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsSidebarOpen(false);
   }, [pathname]);
 
-  // Prevent body scroll when sidebar is open on mobile
   useEffect(() => {
     if (isSidebarOpen && typeof window !== "undefined" && window.innerWidth < 1024) {
       document.body.style.overflow = "hidden";
@@ -124,17 +185,91 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
     };
   }, [isSidebarOpen]);
 
+  const authSessionQuery = useQuery({
+    queryKey: authSessionQueryKey,
+    queryFn: fetchAuthSession,
+    retry: false,
+    staleTime: 30_000,
+  });
   const userYearsQuery = useQuery({
     queryKey: ["user-years"],
     queryFn: fetchUserYears,
+    enabled: authSessionQuery.data?.authenticated === true && !isLoginRoute,
   });
-  const devUserQuery = useQuery({
-    queryKey: ["dev-current-user"],
-    queryFn: fetchDevCurrentUser,
+  const logoutMutation = useMutation({
+    mutationFn: logoutCurrentSession,
+    onSuccess: () => {
+      hasBroadcastSignedInRef.current = false;
+      queryClient.clear();
+      broadcastAuthEvent("signed-out");
+      startTransition(() => {
+        router.replace("/login");
+      });
+    },
   });
 
+  useEffect(() => {
+    return subscribeToAuthEvents(() => {
+      void queryClient.invalidateQueries({ queryKey: authSessionQueryKey });
+    });
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (!authSessionQuery.isSuccess) {
+      return;
+    }
+
+    if (authSessionQuery.data.authenticated) {
+      if (!hasBroadcastSignedInRef.current) {
+        hasBroadcastSignedInRef.current = true;
+        broadcastAuthEvent("signed-in");
+      }
+
+      if (isLoginRoute) {
+        startTransition(() => {
+          router.replace("/");
+        });
+      }
+      return;
+    }
+
+    hasBroadcastSignedInRef.current = false;
+
+    if (!isLoginRoute) {
+      startTransition(() => {
+        router.replace("/login");
+      });
+    }
+  }, [authSessionQuery.data, authSessionQuery.isSuccess, isLoginRoute, router]);
+
+  if (isLoginRoute) {
+    if (authSessionQuery.isPending || authSessionQuery.data?.authenticated) {
+      return <AuthLoadingScreen label="Checking your Clair Tax session..." />;
+    }
+
+    return <div className="min-h-screen">{children}</div>;
+  }
+
+  if (authSessionQuery.isPending) {
+    return <AuthLoadingScreen label="Loading your Clair Tax workspace..." />;
+  }
+
+  if (authSessionQuery.isError) {
+    return (
+      <AuthErrorScreen
+        onRetry={() => {
+          void authSessionQuery.refetch();
+        }}
+      />
+    );
+  }
+
+  if (!authSessionQuery.data?.authenticated) {
+    return <AuthLoadingScreen label="Redirecting you to sign in..." />;
+  }
+
   const sidebarYears = userYearsQuery.data?.map((userYear) => userYear.year) ?? [];
-  const currentEmail = devUserQuery.data?.email ?? "dev@taxrelief.local";
+  const currentEmail = authSessionQuery.data.email ?? "Signed in";
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -159,7 +294,15 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
             <span className="hidden text-sm font-medium text-brand-black sm:block">
               {currentEmail}
             </span>
-            <span className="app-pill-blue">Dev mode</span>
+            <span className="app-pill-blue">Signed in</span>
+            <button
+              type="button"
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+              className="app-button-secondary"
+            >
+              {logoutMutation.isPending ? "Signing out..." : "Log out"}
+            </button>
           </div>
         </div>
       </header>
@@ -288,7 +431,6 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
           <div className="mx-auto w-full max-w-content xl:max-w-none">{children}</div>
         </main>
 
-        {/* Backdrop overlay for mobile sidebar */}
         {isSidebarOpen ? (
           <div
             className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm transition-opacity lg:hidden"
@@ -317,12 +459,6 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
               className="font-medium text-brand-black transition hover:text-brand-blue"
             >
               Profile
-            </Link>
-            <Link
-              href="/year/create"
-              className="font-medium text-brand-black transition hover:text-brand-blue"
-            >
-              Years
             </Link>
           </div>
         </div>

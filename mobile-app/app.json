@@ -8,6 +8,14 @@
     "plugins": [
       "expo-router",
       [
+        "expo-build-properties",
+        {
+          "ios": {
+            "buildReactNativeFromSource": true
+          }
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "cameraPermission": "Allow Clair Tax to use your camera so you can scan and upload receipt photos.",
@@ -24,6 +32,7 @@
       "usesCleartextTraffic": true
     },
     "ios": {
+      "bundleIdentifier": "com.clairtax.mobile",
       "supportsTablet": true,
       "infoPlist": {
         "NSAppTransportSecurity": {

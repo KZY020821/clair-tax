@@ -1,21 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
+import { File } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import {
   buildProfileFactList,
 } from "@/lib/profile-relief-visibility";
 import { formatCurrency } from "@/lib/format-currency";
 import { fetchProfile } from "@/lib/profile";
 import {
+  confirmReceiptReview,
   Receipt,
   ReceiptMutationRequest,
   UploadReceiptFile,
   deleteReceipt,
   fetchReceiptsForUserYear,
+  rejectReceiptReview,
   resolveReceiptFileUrl,
   updateReceipt,
   uploadReceiptForUserYear,
@@ -40,9 +43,6 @@ import {
 import { colors, radii } from "@/theme/tokens";
 
 type UploadFormState = {
-  merchantName: string;
-  receiptDate: string;
-  amount: string;
   reliefCategoryId: string;
   notes: string;
   file: UploadReceiptFile | null;
@@ -73,9 +73,6 @@ function buildEmptyUploadForm(
   categories: UserYearCategorySummary[] | undefined,
 ): UploadFormState {
   return {
-    merchantName: "",
-    receiptDate: "",
-    amount: "",
     reliefCategoryId: categories?.[0]?.reliefCategoryId ?? "",
     notes: "",
     file: null,
@@ -83,12 +80,13 @@ function buildEmptyUploadForm(
 }
 
 function toUploadReceiptFile(
-  file: Pick<UploadReceiptFile, "uri" | "name" | "mimeType">,
+  file: Pick<UploadReceiptFile, "uri" | "name" | "mimeType" | "sizeBytes">,
 ): UploadReceiptFile {
   return {
     uri: file.uri,
     name: file.name,
     mimeType: file.mimeType,
+    sizeBytes: file.sizeBytes,
   };
 }
 
@@ -99,6 +97,7 @@ function toUploadFileFromDocumentPicker(
     uri: asset.uri,
     name: asset.name,
     mimeType: asset.mimeType,
+    sizeBytes: asset.size ?? null,
   });
 }
 
@@ -111,7 +110,62 @@ function toUploadFileFromCapturedImage(
     uri: asset.uri,
     name: asset.fileName ?? `receipt-photo.${extension}`,
     mimeType: asset.mimeType ?? `image/${extension}`,
+    sizeBytes: asset.fileSize ?? null,
   });
+}
+
+function resolveUploadFileSize(file: UploadReceiptFile): number {
+  if (
+    typeof file.sizeBytes === "number" &&
+    Number.isFinite(file.sizeBytes) &&
+    file.sizeBytes > 0
+  ) {
+    return file.sizeBytes;
+  }
+
+  const localFile = new File(file.uri);
+  if (Number.isFinite(localFile.size) && localFile.size > 0) {
+    return localFile.size;
+  }
+
+  throw new Error("Unable to determine the selected file size. Please choose the file again.");
+}
+
+function formatFileSize(sizeBytes: number): string {
+  return `${(sizeBytes / 1024 / 1024).toFixed(2)}MB`;
+}
+
+function formatReceiptStatus(status: string): string {
+  switch (status) {
+    case "uploaded":
+      return "Uploaded";
+    case "processing":
+      return "Processing";
+    case "processed":
+      return "Ready for review";
+    case "verified":
+      return "Verified";
+    case "rejected":
+      return "Rejected";
+    case "failed":
+      return "Failed";
+    default:
+      return status;
+  }
+}
+
+function hasEditableReceiptValues(
+  receipt: Receipt,
+): receipt is Receipt & {
+  merchantName: string;
+  receiptDate: string;
+  amount: number;
+} {
+  return (
+    receipt.merchantName !== null &&
+    receipt.receiptDate !== null &&
+    receipt.amount !== null
+  );
 }
 
 function SummaryCard({
@@ -188,7 +242,13 @@ function CategorySummaryCard({
   );
 }
 
-function toEditForm(receipt: Receipt): EditFormState {
+function toEditForm(
+  receipt: Receipt & {
+    merchantName: string;
+    receiptDate: string;
+    amount: number;
+  },
+): EditFormState {
   return {
     merchantName: receipt.merchantName,
     receiptDate: receipt.receiptDate,
@@ -225,41 +285,57 @@ export function YearWorkspaceScreen({ year }: Readonly<{ year: number }>) {
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
-      const merchantName = uploadForm.merchantName.trim();
-      const receiptDate = uploadForm.receiptDate.trim();
-      const amount = Number(uploadForm.amount);
       const reliefCategoryId =
         uploadForm.reliefCategoryId ||
         workspaceQuery.data?.categories[0]?.reliefCategoryId ||
         "";
 
-      if (
-        merchantName === "" ||
-        receiptDate === "" ||
-        !Number.isFinite(amount) ||
-        amount < 0 ||
-        reliefCategoryId === "" ||
-        uploadForm.file === null
-      ) {
-        throw new Error("Complete the required fields before uploading a receipt.");
+      if (reliefCategoryId === "" || uploadForm.file === null) {
+        throw new Error("Choose a category and attach a receipt file before uploading.");
+      }
+
+      const fileSizeBytes = resolveUploadFileSize(uploadForm.file);
+      const maxFileSizeBytes = 10 * 1024 * 1024;
+      if (fileSizeBytes > maxFileSizeBytes) {
+        throw new Error(
+          `File size is too large (${formatFileSize(fileSizeBytes)}). Please upload a file smaller than 10MB.`,
+        );
       }
 
       return uploadReceiptForUserYear(year, {
-        merchantName,
-        receiptDate,
-        amount,
         reliefCategoryId,
         notes: normalizeOptionalString(uploadForm.notes),
         file: {
           uri: uploadForm.file.uri,
           name: uploadForm.file.name,
           mimeType: uploadForm.file.mimeType,
+          sizeBytes: fileSizeBytes,
         },
       });
     },
     onSuccess: async () => {
       setUploadSourceError(null);
       setUploadForm(buildEmptyUploadForm(workspaceQuery.data?.categories));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["user-year-receipts", year] }),
+        queryClient.invalidateQueries({ queryKey: ["user-year-workspace", year] }),
+      ]);
+    },
+  });
+
+  const confirmReviewMutation = useMutation({
+    mutationFn: (receiptId: string) => confirmReceiptReview(receiptId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["user-year-receipts", year] }),
+        queryClient.invalidateQueries({ queryKey: ["user-year-workspace", year] }),
+      ]);
+    },
+  });
+
+  const rejectReviewMutation = useMutation({
+    mutationFn: (receiptId: string) => rejectReceiptReview(receiptId),
+    onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["user-year-receipts", year] }),
         queryClient.invalidateQueries({ queryKey: ["user-year-workspace", year] }),
@@ -321,7 +397,7 @@ export function YearWorkspaceScreen({ year }: Readonly<{ year: number }>) {
     }
 
     setUploadForm((current) =>
-      current.reliefCategoryId !== "" || current.file !== null || current.merchantName !== ""
+      current.reliefCategoryId !== "" || current.file !== null
         ? current
         : buildEmptyUploadForm(workspaceQuery.data.categories),
     );
@@ -477,33 +553,14 @@ export function YearWorkspaceScreen({ year }: Readonly<{ year: number }>) {
         <SectionTitle
           eyebrow="Upload Receipt"
           title="Add another receipt"
-          detail="The mobile upload form keeps the same required fields as the web app, with native options to scan a receipt photo or choose a local file."
+          detail="The mobile upload flow now matches the web app: choose a relief category, attach the file, then let extraction prepare the receipt for review."
         />
         <View style={styles.sectionStack}>
-          <InputField
-            label="Merchant name"
-            value={uploadForm.merchantName}
-            onChangeText={(value) => setUploadForm((current) => ({ ...current, merchantName: value }))}
-            placeholder="Merchant or provider"
-          />
-          <InputField
-            label="Receipt date"
-            value={uploadForm.receiptDate}
-            onChangeText={(value) => setUploadForm((current) => ({ ...current, receiptDate: value }))}
-            placeholder="YYYY-MM-DD"
-          />
-          <InputField
-            label="Amount"
-            value={uploadForm.amount}
-            onChangeText={(value) => setUploadForm((current) => ({ ...current, amount: value }))}
-            placeholder="0.00"
-            keyboardType="decimal-pad"
-          />
           <InputField
             label="Notes"
             value={uploadForm.notes}
             onChangeText={(value) => setUploadForm((current) => ({ ...current, notes: value }))}
-            placeholder="Optional notes"
+            placeholder="Optional notes for later review"
             multiline
             numberOfLines={4}
             style={styles.notesInput}
@@ -533,6 +590,21 @@ export function YearWorkspaceScreen({ year }: Readonly<{ year: number }>) {
             <Text style={styles.fileCopy}>
               {uploadForm.file ? uploadForm.file.name : "No file selected yet."}
             </Text>
+            {uploadForm.file ? (
+              <Text style={styles.fileHint}>
+                {(() => {
+                  try {
+                    return `Size ${formatFileSize(resolveUploadFileSize(uploadForm.file))}.`;
+                  } catch {
+                    return "Size will be validated before upload.";
+                  }
+                })()} Maximum file size: 10MB.
+              </Text>
+            ) : (
+              <Text style={styles.fileHint}>
+                Maximum file size: 10MB. The file uploads to object storage first, then enters the extraction queue for review.
+              </Text>
+            )}
             <View style={styles.fileActionStack}>
               <Button
                 label="Take photo"
@@ -574,29 +646,92 @@ export function YearWorkspaceScreen({ year }: Readonly<{ year: number }>) {
         {receiptsQuery.error instanceof Error ? (
           <ErrorBanner message={receiptsQuery.error.message} />
         ) : null}
+        {confirmReviewMutation.error instanceof Error ? (
+          <ErrorBanner message={confirmReviewMutation.error.message} />
+        ) : null}
+        {rejectReviewMutation.error instanceof Error ? (
+          <ErrorBanner message={rejectReviewMutation.error.message} />
+        ) : null}
 
         {receipts.length > 0 ? (
           <View style={styles.sectionStack}>
             {receipts.map((receipt) => {
               const fileUrl = resolveReceiptFileUrl(receipt.fileUrl);
               const isEditing = editingReceiptId === receipt.id && editForm !== null;
+              const resolvedTitle =
+                receipt.merchantName ??
+                receipt.latestExtraction?.merchantName ??
+                receipt.fileName ??
+                "Receipt awaiting extraction";
+              const resolvedDate = receipt.receiptDate
+                ? formatReceiptDate(receipt.receiptDate)
+                : receipt.latestExtraction?.receiptDate
+                  ? formatReceiptDate(receipt.latestExtraction.receiptDate)
+                  : "Date pending";
+              const resolvedAmount =
+                receipt.amount !== null
+                  ? formatCurrency(receipt.amount)
+                  : receipt.latestExtraction?.totalAmount !== null &&
+                      receipt.latestExtraction?.totalAmount !== undefined
+                    ? `${formatCurrency(receipt.latestExtraction.totalAmount)} (candidate)`
+                    : "Amount pending";
 
               return (
                 <View key={receipt.id} style={styles.receiptCard}>
                   <View style={styles.receiptHeader}>
                     <View style={styles.receiptCopy}>
-                      <Text style={styles.receiptTitle}>{receipt.merchantName}</Text>
+                      <View style={styles.receiptChipRow}>
+                        <Text style={styles.receiptTitle}>{resolvedTitle}</Text>
+                        <Pill tone="blue">{formatReceiptStatus(receipt.status)}</Pill>
+                        {receipt.reliefCategoryName ? (
+                          <Pill>{receipt.reliefCategoryName}</Pill>
+                        ) : null}
+                      </View>
                       <Text style={styles.receiptMeta}>
-                        {formatReceiptDate(receipt.receiptDate)} · {formatCurrency(receipt.amount)}
-                      </Text>
-                      <Text style={styles.receiptMeta}>
-                        {receipt.reliefCategoryName ?? "Unassigned category"}
+                        {resolvedDate} · {resolvedAmount}
                       </Text>
                       {receipt.notes ? (
                         <Text style={styles.receiptNote}>{receipt.notes}</Text>
                       ) : null}
+                      {receipt.latestExtraction ? (
+                        <View style={styles.extractionCard}>
+                          <Text style={styles.extractionTitle}>Latest extraction</Text>
+                          <Text style={styles.extractionCopy}>
+                            Confidence {(receipt.latestExtraction.confidenceScore * 100).toFixed(0)}% via {receipt.latestExtraction.providerName}.
+                          </Text>
+                          {receipt.latestExtraction.warnings.length > 0 ? (
+                            <Text style={styles.extractionCopy}>
+                              {receipt.latestExtraction.warnings.join(" ")}
+                            </Text>
+                          ) : null}
+                        </View>
+                      ) : null}
+                      {receipt.processingErrorMessage ? (
+                        <Text style={styles.processingErrorText}>
+                          {receipt.processingErrorMessage}
+                        </Text>
+                      ) : null}
                     </View>
                     <View style={styles.receiptActions}>
+                      {receipt.status === "processed" ? (
+                        <>
+                          <Button
+                            label={
+                              confirmReviewMutation.isPending
+                                ? "Confirming..."
+                                : "Confirm extraction"
+                            }
+                            onPress={() => confirmReviewMutation.mutate(receipt.id)}
+                            disabled={confirmReviewMutation.isPending}
+                          />
+                          <Button
+                            label={rejectReviewMutation.isPending ? "Rejecting..." : "Reject"}
+                            variant="secondary"
+                            onPress={() => rejectReviewMutation.mutate(receipt.id)}
+                            disabled={rejectReviewMutation.isPending}
+                          />
+                        </>
+                      ) : null}
                       {fileUrl ? (
                         <Button
                           label="Open file"
@@ -614,9 +749,14 @@ export function YearWorkspaceScreen({ year }: Readonly<{ year: number }>) {
                             return;
                           }
 
+                          if (!hasEditableReceiptValues(receipt)) {
+                            return;
+                          }
+
                           setEditingReceiptId(receipt.id);
                           setEditForm(toEditForm(receipt));
                         }}
+                        disabled={!isEditing && !hasEditableReceiptValues(receipt)}
                       />
                     </View>
                   </View>
@@ -823,6 +963,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.muted,
   },
+  fileHint: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: colors.muted,
+  },
   fileActionStack: {
     gap: 10,
   },
@@ -840,6 +985,12 @@ const styles = StyleSheet.create({
   receiptCopy: {
     gap: 6,
   },
+  receiptChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center",
+  },
   receiptTitle: {
     fontSize: 16,
     lineHeight: 22,
@@ -855,6 +1006,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     color: colors.black,
+  },
+  extractionCard: {
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.ice,
+    padding: 12,
+    gap: 6,
+  },
+  extractionTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "700",
+    color: colors.black,
+  },
+  extractionCopy: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: colors.muted,
+  },
+  processingErrorText: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#B42318",
   },
   receiptActions: {
     gap: 10,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { backendApiBaseUrl } from "./backend-api";
+import { backendFetch, buildBackendUrl } from "./backend-api";
 
 const numericValueSchema = z
   .union([z.number(), z.string()])
@@ -21,12 +21,6 @@ const moneyValueSchema = numericValueSchema.pipe(z.number().nonnegative());
 
 const apiErrorSchema = z.object({
   message: z.string().min(1),
-});
-
-const currentDevUserSchema = z.object({
-  id: z.string().uuid(),
-  email: z.string().email(),
-  mode: z.string().min(1),
 });
 
 const latestExtractionSchema = z.object({
@@ -75,7 +69,6 @@ const receiptUploadIntentSchema = z.object({
 const receiptYearsSchema = z.array(z.number().int());
 const receiptsSchema = z.array(receiptSchema);
 
-export type DevCurrentUser = z.infer<typeof currentDevUserSchema>;
 export type Receipt = z.infer<typeof receiptSchema>;
 export type UploadYearReceiptRequest = {
   reliefCategoryId: string;
@@ -161,34 +154,11 @@ function buildReceiptFileHref(fileUrl: string | null): string | null {
     return null;
   }
 
-  return fileUrl.startsWith("http://") || fileUrl.startsWith("https://")
-    ? fileUrl
-    : `${backendApiBaseUrl}${fileUrl}`;
-}
-
-export async function fetchDevCurrentUser(): Promise<DevCurrentUser> {
-  const response = await fetch(`${backendApiBaseUrl}/api/dev/me`, {
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      await getApiErrorMessage(
-        response,
-        `Failed to load current dev user (${response.status})`,
-      ),
-    );
-  }
-
-  const data: unknown = await response.json();
-
-  return currentDevUserSchema.parse(data);
+  return buildBackendUrl(fileUrl);
 }
 
 export async function fetchReceiptYears(): Promise<number[]> {
-  const response = await fetch(`${backendApiBaseUrl}/api/receipts/years`, {
+  const response = await backendFetch("/api/receipts/years", {
     headers: {
       Accept: "application/json",
     },
@@ -215,7 +185,7 @@ export async function fetchReceipts(year?: number): Promise<Receipt[]> {
   }
 
   const suffix = searchParams.size > 0 ? `?${searchParams.toString()}` : "";
-  const response = await fetch(`${backendApiBaseUrl}/api/receipts${suffix}`, {
+  const response = await backendFetch(`/api/receipts${suffix}`, {
     headers: {
       Accept: "application/json",
     },
@@ -238,7 +208,7 @@ export async function fetchReceipts(year?: number): Promise<Receipt[]> {
 export async function createReceipt(
   payload: ReceiptMutationRequest,
 ): Promise<Receipt> {
-  const response = await fetch(`${backendApiBaseUrl}/api/receipts`, {
+  const response = await backendFetch("/api/receipts", {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -265,7 +235,7 @@ export async function updateReceipt(
   receiptId: string,
   payload: ReceiptMutationRequest,
 ): Promise<Receipt> {
-  const response = await fetch(`${backendApiBaseUrl}/api/receipts/${receiptId}`, {
+  const response = await backendFetch(`/api/receipts/${receiptId}`, {
     method: "PUT",
     headers: {
       Accept: "application/json",
@@ -289,7 +259,7 @@ export async function updateReceipt(
 }
 
 export async function deleteReceipt(receiptId: string): Promise<void> {
-  const response = await fetch(`${backendApiBaseUrl}/api/receipts/${receiptId}`, {
+  const response = await backendFetch(`/api/receipts/${receiptId}`, {
     method: "DELETE",
   });
 
@@ -304,7 +274,7 @@ export async function deleteReceipt(receiptId: string): Promise<void> {
 }
 
 export async function fetchReceiptsForUserYear(year: number): Promise<Receipt[]> {
-  const response = await fetch(`${backendApiBaseUrl}/api/user-years/${year}/receipts`, {
+  const response = await backendFetch(`/api/user-years/${year}/receipts`, {
     headers: {
       Accept: "application/json",
     },
@@ -329,9 +299,10 @@ export async function uploadReceiptForUserYear(
   payload: UploadYearReceiptRequest,
 ): Promise<Receipt> {
   const uploadIntentResponse = await fetch(
-    `${backendApiBaseUrl}/api/user-years/${year}/receipts/upload-intent`,
+    buildBackendUrl(`/api/user-years/${year}/receipts/upload-intent`),
     {
       method: "POST",
+      credentials: "include",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -357,7 +328,7 @@ export async function uploadReceiptForUserYear(
   const uploadIntentData: unknown = await uploadIntentResponse.json();
   const uploadIntent = receiptUploadIntentSchema.parse(uploadIntentData);
 
-  const uploadResponse = await fetch(uploadIntent.uploadUrl, {
+  const uploadResponse = await fetch(buildBackendUrl(uploadIntent.uploadUrl), {
     method: uploadIntent.uploadMethod,
     headers: uploadIntent.uploadHeaders,
     body: payload.file,
@@ -373,9 +344,10 @@ export async function uploadReceiptForUserYear(
   }
 
   const response = await fetch(
-    `${backendApiBaseUrl}/api/user-years/${year}/receipts/confirm-upload`,
+    buildBackendUrl(`/api/user-years/${year}/receipts/confirm-upload`),
     {
       method: "POST",
+      credentials: "include",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -406,9 +378,10 @@ export async function confirmReceiptReview(
   payload: ConfirmReceiptReviewRequest = {},
 ): Promise<Receipt> {
   const response = await fetch(
-    `${backendApiBaseUrl}/api/receipts/${receiptId}/review/confirm`,
+    buildBackendUrl(`/api/receipts/${receiptId}/review/confirm`),
     {
       method: "POST",
+      credentials: "include",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -436,9 +409,10 @@ export async function rejectReceiptReview(
   notes?: string | null,
 ): Promise<Receipt> {
   const response = await fetch(
-    `${backendApiBaseUrl}/api/receipts/${receiptId}/review/reject`,
+    buildBackendUrl(`/api/receipts/${receiptId}/review/reject`),
     {
       method: "POST",
+      credentials: "include",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",

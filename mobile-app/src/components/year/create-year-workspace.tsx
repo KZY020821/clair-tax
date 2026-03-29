@@ -58,9 +58,9 @@ export function CreateYearWorkspaceScreen() {
       <View style={styles.grid}>
         <Panel>
           <SectionTitle
-            eyebrow="Temporary Account"
+            eyebrow="Local Account"
             title="Open a year workspace before adding receipts"
-            detail="This route uses the temporary developer account already shown in the shell. Pick a policy year from backend data, create the workspace once, and Clair Tax will keep that year available in the menu."
+            detail="Mobile still uses the temporary local account already shown in the shell. The localhost web app now signs in with magic-link sessions, but this screen still opens year workspaces for the mobile fallback account."
           />
         </Panel>
 
@@ -68,8 +68,8 @@ export function CreateYearWorkspaceScreen() {
           <SectionTitle eyebrow="Current State" title={userYearsQuery.isLoading ? "..." : String(existingYears.length)} />
           <Text style={styles.panelCopy}>
             {existingYears.length > 0
-              ? "These are the year workspaces already created for the current dev user."
-              : "No year workspaces exist yet for the current dev user."}
+              ? "These are the year workspaces already created for the current local mobile account."
+              : "No year workspaces exist yet for the current local mobile account."}
           </Text>
         </Panel>
       </View>
@@ -160,7 +160,7 @@ export function CreateYearWorkspaceScreen() {
         <SectionTitle
           eyebrow="Created Years"
           title="Sidebar-ready workspaces"
-          detail="Only years the current dev user has created will appear in the year rail and the year routes."
+          detail="Only years the current local mobile account has created will appear in the year rail and the year routes."
         />
         {existingYears.length > 0 ? (
           <View style={styles.sectionStack}>

@@ -129,7 +129,7 @@ export function ProfileSettingsScreen() {
         <Hero
           eyebrow="Profile"
           title="Loading saved profile..."
-          detail="Pulling the current dev account details and household settings."
+          detail="Pulling the current local account details and household settings."
         />
       </Screen>
     );
@@ -178,22 +178,22 @@ export function ProfileSettingsScreen() {
       <Hero
         eyebrow="Profile"
         title="Saved filing profile"
-        detail="This dev-only profile drives family and disability relief visibility across the calculator and year workspace."
+        detail="Mobile still uses the temporary local account in this slice, while the localhost web app now signs in with magic-link sessions."
       />
 
       <Panel>
         <SectionTitle
           eyebrow="Profile"
           title="Saved filing profile"
-          detail="This dev-only profile drives family and disability relief visibility across the calculator and year detail page."
-          right={<Pill tone="blue">Dev account</Pill>}
+          detail="This temporary local-account profile still drives family and disability relief visibility across the calculator and year detail page on mobile."
+          right={<Pill tone="blue">Local account</Pill>}
         />
 
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Email</Text>
           <Text style={styles.summaryValue}>{profile.email}</Text>
           <Text style={styles.summaryCopy}>
-            The app is still using the temporary dev-only current user flow.
+            Mobile is still using the temporary local account flow. The localhost web app now signs in separately with magic-link sessions.
           </Text>
         </View>
 
@@ -293,19 +293,19 @@ export function ProfileSettingsScreen() {
       <Panel>
         <SectionTitle
           eyebrow="Danger"
-          title="Reset dev account data"
-          detail="Use this when you want to clear the temporary profile and related dev-only workspace state."
+          title="Reset local account data"
+          detail="Use this when you want to clear the temporary mobile profile and related local workspace state."
         />
         {deleteMutation.error instanceof Error ? (
           <ErrorBanner message={deleteMutation.error.message} />
         ) : null}
         <Button
-          label={deleteMutation.isPending ? "Resetting..." : "Delete all dev account data"}
+          label={deleteMutation.isPending ? "Resetting..." : "Delete all local account data"}
           variant="secondary"
           onPress={() => {
             Alert.alert(
-              "Delete all dev account data?",
-              "This clears the temporary profile and resets the current dev account state.",
+              "Delete all local account data?",
+              "This clears the temporary mobile profile and resets the current local account state.",
               [
                 { text: "Cancel", style: "cancel" },
                 {

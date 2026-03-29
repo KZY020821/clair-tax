@@ -97,6 +97,10 @@ public class AppUser {
         return updatedAt;
     }
 
+    public void markLoggedIn(OffsetDateTime lastLoginAt) {
+        this.lastLoginAt = lastLoginAt;
+    }
+
     public void updateProfile(
             boolean disabled,
             MaritalStatus maritalStatus,
