@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { backendApiBaseUrl } from "./backend-api";
+import { backendFetch } from "./backend-api";
 
 const numericValueSchema = z
   .union([z.number(), z.string()])
@@ -30,6 +30,8 @@ const reliefCategoryWireSchema = z
     input_type: z.string().min(1).optional(),
     unitAmount: moneyValueSchema.nullable().optional(),
     unit_amount: moneyValueSchema.nullable().optional(),
+    maxQuantity: z.number().int().nonnegative().nullable().optional(),
+    max_quantity: z.number().int().nonnegative().nullable().optional(),
     maxAmount: moneyValueSchema.optional(),
     max_amount: moneyValueSchema.optional(),
     displayOrder: z.number().int().optional(),
@@ -64,6 +66,7 @@ const reliefCategorySchema = reliefCategoryWireSchema.transform((value) => ({
   section: value.section ?? "identity",
   inputType: value.inputType ?? value.input_type ?? "amount",
   unitAmount: value.unitAmount ?? value.unit_amount,
+  maxQuantity: value.maxQuantity ?? value.max_quantity ?? null,
   maxAmount: value.maxAmount ?? value.max_amount ?? 0,
   displayOrder: value.displayOrder ?? value.display_order ?? 0,
   groupCode: value.groupCode ?? value.group_code ?? null,
@@ -166,7 +169,7 @@ async function getApiErrorMessage(
 }
 
 export async function fetchPolicyYear(year: number): Promise<PolicyResponse> {
-  const response = await fetch(`${backendApiBaseUrl}/api/policies/${year}`, {
+  const response = await backendFetch(`/api/policies/${year}`, {
     headers: {
       Accept: "application/json",
     },
@@ -189,7 +192,7 @@ export async function fetchPolicyYear(year: number): Promise<PolicyResponse> {
 export async function calculateTax(
   payload: CalculatorRequest,
 ): Promise<CalculatorResponse> {
-  const response = await fetch(`${backendApiBaseUrl}/api/calculator/calculate`, {
+  const response = await backendFetch("/api/calculator/calculate", {
     method: "POST",
     headers: {
       Accept: "application/json",

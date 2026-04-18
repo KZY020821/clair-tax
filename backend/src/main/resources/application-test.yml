@@ -9,3 +9,12 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+  mail:
+    username: clairtax.notification@gmail.com
+    password: test-app-password
+
+clair:
+  receipts:
+    storage-path: /tmp/clair-tax-test-receipts
+    upload-path: /tmp/clair-tax-test-receipt-uploads
+    internal-api-token: test-internal-token

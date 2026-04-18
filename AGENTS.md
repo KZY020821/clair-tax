@@ -100,3 +100,54 @@ Malaysian personal tax management system with web and mobile clients.
 - code compiles
 - tests pass
 - README updated if setup changes
+
+## Mission
+Build and maintain Clair Tax as a production-ready monorepo with a clear separation of responsibilities:
+- frontend: Next.js application
+- springboot: primary business logic and persistence service
+- fastapi: Python service for supporting APIs, computation, AI workflows, or auxiliary processing
+
+Optimize for correctness, maintainability, readability, and safe iteration.
+
+## Monorepo rules
+- Always inspect existing patterns before introducing a new one.
+- Prefer minimal, focused diffs over large rewrites.
+- Keep changes scoped to the service relevant to the task unless a cross-service update is required.
+- Do not move, rename, or reorganize major folders unless the task explicitly requires it.
+- Preserve backward compatibility for public APIs unless the task explicitly allows breaking changes.
+
+## Service boundaries
+- frontend owns UI, client interactions, route composition, and presentation concerns.
+- springboot owns core tax rules, persistent domain models, database migrations, and primary API contracts unless the repository clearly delegates a specific concern elsewhere.
+- fastapi owns Python-native workflows, supplemental APIs, AI or data processing tasks, and isolated service capabilities.
+- Do not duplicate complex business logic across services.
+- Shared domain rules should have a single source of truth.
+
+## Code quality
+- Prefer readable code over clever code.
+- Keep functions and classes focused.
+- Use descriptive names.
+- Remove dead code introduced by the current task.
+- Avoid introducing abstractions unless they provide immediate clarity or reuse.
+
+## Safety and correctness
+- Never hardcode passwords, tokens, or secrets.
+- Validate input at service boundaries.
+- Handle loading, empty, success, and error states in user-facing flows.
+- Fail with clear, actionable messages.
+- Treat tax calculations as correctness-sensitive logic.
+
+## Data and API expectations
+- Keep API contracts explicit and typed.
+- Be cautious with nullable fields, money values, and date handling.
+- Keep Year of Assessment logic explicit.
+- Avoid hidden coupling between frontend forms and backend assumptions.
+
+## Testing and validation
+- Update nearby tests when behavior changes and tests already exist.
+- Prefer adding focused tests for tax logic, validation, and API serialization.
+- After code changes, self-check edge cases and likely failure modes.
+
+## Workflow
+- Read the closest AGENTS.md and relevant skills before implementing.
+- When a task is specific to frontend, springboot, or fastapi, prefer working from that subdirectory so deeper instructions apply automatically.

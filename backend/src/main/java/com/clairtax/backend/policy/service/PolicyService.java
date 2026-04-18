@@ -59,6 +59,7 @@ public class PolicyService {
                 reliefCategory.getInputType(),
                 reliefCategory.getUnitAmount(),
                 reliefCategory.getMaxAmount(),
+                reliefCategory.getMaxQuantity(),
                 reliefCategory.getDisplayOrder(),
                 reliefCategory.getGroupCode(),
                 reliefCategory.getGroupMaxAmount(),

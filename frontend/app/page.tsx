@@ -5,9 +5,11 @@ import Link from "next/link";
 import type { ComponentType, SVGProps } from "react";
 import AiDemoPanel from "./components/ai-demo-panel";
 import PolicyYearsPanel from "./components/policy-years-panel";
+import DynamicSuggestionCard from "./components/suggestion/dynamic-suggestion-card";
 import { fetchAiDemoSummary } from "./lib/ai-demo-summary";
 import { formatCurrency } from "./lib/format-currency";
 import { fetchPolicyYears } from "./lib/policy-years";
+import { fetchTaxSuggestions } from "./lib/tax-suggestions";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
@@ -165,6 +167,13 @@ export default function HomePage() {
   const pendingReceipts = aiSummaryQuery.data?.detected_receipt_count ?? 0;
   const extractedTotal = aiSummaryQuery.data?.extracted_total_amount ?? 0;
 
+  const suggestionsQuery = useQuery({
+    queryKey: ["tax-suggestions", latestYear],
+    queryFn: () => fetchTaxSuggestions(latestYear),
+    enabled: latestYear > 0,
+    staleTime: 60_000, // 60 seconds
+  });
+
   const readinessChecks = [
     {
       label: "Policy year feed connected",
@@ -279,11 +288,38 @@ export default function HomePage() {
           </Link>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-3">
-          {suggestionCards.map((card) => (
-            <SuggestionCard key={card.title} {...card} />
-          ))}
-        </div>
+        {suggestionsQuery.isLoading && (
+          <div className="app-panel p-6 text-center text-brand-muted">
+            Loading suggestions...
+          </div>
+        )}
+
+        {suggestionsQuery.isError && (
+          <div className="app-panel p-6 text-center text-brand-muted">
+            Unable to load suggestions. Please try again later.
+          </div>
+        )}
+
+        {suggestionsQuery.data && suggestionsQuery.data.suggestions.length === 0 && (
+          <div className="app-panel p-6 text-center">
+            <p className="text-brand-black font-medium">No suggestions yet</p>
+            <p className="mt-2 text-sm text-brand-muted">
+              Upload verified receipts or update your profile to unlock tailored relief suggestions.
+            </p>
+          </div>
+        )}
+
+        {suggestionsQuery.data && suggestionsQuery.data.suggestions.length > 0 && (
+          <div className="grid gap-4 xl:grid-cols-3">
+            {suggestionsQuery.data.suggestions.map((suggestion) => (
+              <DynamicSuggestionCard
+                key={suggestion.id}
+                suggestion={suggestion}
+                policyYear={latestYear}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="space-y-5">

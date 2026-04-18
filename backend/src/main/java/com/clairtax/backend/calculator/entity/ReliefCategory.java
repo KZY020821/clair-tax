@@ -42,6 +42,9 @@ public class ReliefCategory {
     @Column(name = "unit_amount")
     private BigDecimal unitAmount;
 
+    @Column(name = "max_quantity")
+    private Integer maxQuantity;
+
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder;
 
@@ -104,6 +107,10 @@ public class ReliefCategory {
 
     public BigDecimal getUnitAmount() {
         return unitAmount;
+    }
+
+    public Integer getMaxQuantity() {
+        return maxQuantity;
     }
 
     public Integer getDisplayOrder() {
