@@ -1,0 +1,9 @@
+Clair Tax
+
+Use this 6-digit sign-in code to continue in the Clair Tax mobile app:
+
+{{code}}
+
+This sign-in code expires in {{expiryLabel}}.
+
+If you did not request this code, you can safely ignore it.

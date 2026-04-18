@@ -23,8 +23,8 @@ def test_demo_summary() -> None:
         "detected_receipt_count": 3,
         "extracted_total_amount": 1820.5,
         "suggestion_preview": (
-            "Lifestyle receipts were grouped successfully and look ready for user review "
-            "before tax filing."
+            "Queued receipt uploads move through extraction and wait for human review "
+            "before contributing to tax relief totals."
         ),
-        "generated_at": "2026-03-20T00:00:00Z",
+        "generated_at": "2026-03-27T00:00:00Z",
     }

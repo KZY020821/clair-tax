@@ -1,10 +1,18 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import CalculationResult from "./calculation-result";
 import { formatCurrency } from "../../lib/format-currency";
 import { fetchPolicyYears } from "../../lib/policy-years";
+import { fetchProfile } from "../../lib/profile";
+import {
+  buildProfileFactList,
+  isCategoryVisibleForProfile,
+  isProfileDrivenFixedCategoryActive,
+} from "../../lib/profile-relief-visibility";
 import {
   calculateTax,
   fetchPolicyYear,
@@ -70,6 +78,75 @@ const sectionContent: Record<
       "First-home loan interest plus eligible green and household sustainability reliefs.",
   },
 };
+
+function AccordionChevron({ open }: Readonly<{ open: boolean }>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      className={`h-5 w-5 text-brand-black transition ${open ? "rotate-180" : ""}`}
+    >
+      <path
+        d="m7.5 10 4.5 4.5L16.5 10"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function AccordionSection({
+  section,
+  title,
+  detail,
+  itemCount,
+  isOpen,
+  onToggle,
+  children,
+}: Readonly<{
+  section: string;
+  title: string;
+  detail: string;
+  itemCount: number;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}>) {
+  return (
+    <section className="overflow-hidden rounded-card border border-brand-line bg-brand-white">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-start justify-between gap-4 px-5 py-5 text-left sm:px-6"
+      >
+        <div className="min-w-0">
+          <p className="app-eyebrow">{section.replaceAll("_", " ")}</p>
+          <h3 className="mt-3 text-2xl text-brand-black">{title}</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-brand-muted">
+            {detail}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          <span className={itemCount > 0 ? "app-pill-blue" : "app-pill"}>
+            {itemCount} shown
+          </span>
+          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-brand-line bg-brand-ice">
+            <AccordionChevron open={isOpen} />
+          </span>
+        </div>
+      </button>
+
+      {isOpen ? (
+        <div className="border-t border-brand-line px-5 py-5 sm:px-6">
+          {children}
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 function SummaryTile({
   label,
@@ -175,11 +252,32 @@ function getZakatError(value: string): string | null {
   return null;
 }
 
+function scrollToCalculationResult() {
+  requestAnimationFrame(() => {
+    const resultSection = document.getElementById("calculation-result");
+    if (!resultSection) {
+      return;
+    }
+
+    const stickyHeader = document.querySelector("header");
+    const headerOffset =
+      stickyHeader instanceof HTMLElement ? stickyHeader.getBoundingClientRect().height : 0;
+    const targetTop =
+      resultSection.getBoundingClientRect().top + window.scrollY - headerOffset;
+
+    window.scrollTo({
+      top: Math.max(targetTop, 0),
+      behavior: "smooth",
+    });
+  });
+}
+
 function CategoryField({
   category,
   amountValue,
   countValue,
   selected,
+  profileApplied,
   validationMessage,
   disabled,
   onAmountChange,
@@ -190,19 +288,26 @@ function CategoryField({
   amountValue: string;
   countValue: string;
   selected: boolean;
+  profileApplied: boolean;
   validationMessage: string | null;
   disabled: boolean;
   onAmountChange: (nextValue: string) => void;
   onCountChange: (nextValue: string) => void;
   onSelectedChange: (nextValue: boolean) => void;
 }>) {
+  const autoApplied = category.autoApply || profileApplied;
   const showSharedCap =
     category.groupCode && category.groupMaxAmount !== null && category.groupMaxAmount !== undefined;
+  const unitAmount = category.unitAmount;
+  const hasUnitAmount = unitAmount !== null && unitAmount !== undefined;
+  const showMoneyCapBadge = category.inputType !== "count";
+  const showCountLimitBadge =
+    category.inputType === "count" && category.maxQuantity !== null;
 
   return (
     <article
       className={`rounded-card border p-5 ${
-        category.autoApply
+        autoApplied
           ? "border-brand-lineStrong bg-brand-ice"
           : "border-brand-line bg-brand-white"
       }`}
@@ -210,13 +315,18 @@ function CategoryField({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="app-pill-blue">Cap {formatCurrency(category.maxAmount)}</span>
-            {category.unitAmount !== null && category.unitAmount !== undefined ? (
+            {showMoneyCapBadge ? (
+              <span className="app-pill-blue">Cap {formatCurrency(category.maxAmount)}</span>
+            ) : null}
+            {hasUnitAmount ? (
               <span className="app-pill">
                 {category.inputType === "count"
-                  ? `${formatCurrency(category.unitAmount)} each`
-                  : `${formatCurrency(category.unitAmount)} fixed`}
+                  ? `${formatCurrency(unitAmount)} each`
+                  : `${formatCurrency(unitAmount)} fixed`}
               </span>
+            ) : null}
+            {showCountLimitBadge ? (
+              <span className="app-pill">Limit {category.maxQuantity}</span>
             ) : null}
             {category.requiresReceipt ? <span className="app-pill">Receipt based</span> : null}
             {showSharedCap ? (
@@ -236,10 +346,10 @@ function CategoryField({
           ) : null}
         </div>
 
-        {category.autoApply ? (
+        {autoApplied ? (
           <div className="rounded-card border border-brand-lineStrong bg-brand-white px-4 py-3 text-right">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-muted">
-              Automatic
+              {profileApplied ? "Saved profile" : "Automatic"}
             </p>
             <p className="mt-2 text-2xl text-brand-black">
               {formatCurrency(category.unitAmount ?? category.maxAmount)}
@@ -248,11 +358,15 @@ function CategoryField({
         ) : null}
       </div>
 
-      {category.autoApply ? (
-        <p className="app-help">This relief is applied automatically.</p>
+      {autoApplied ? (
+        <p className="app-help">
+          {profileApplied
+            ? "This relief is applied automatically from the saved profile."
+            : "This relief is applied automatically."}
+        </p>
       ) : null}
 
-      {!category.autoApply && category.inputType === "fixed" ? (
+      {!autoApplied && category.inputType === "fixed" ? (
         <label className="mt-5 flex items-center gap-3 text-sm font-medium text-brand-black">
           <input
             type="checkbox"
@@ -265,7 +379,7 @@ function CategoryField({
         </label>
       ) : null}
 
-      {!category.autoApply && category.inputType === "amount" ? (
+      {!autoApplied && category.inputType === "amount" ? (
         <div className="mt-5">
           <label className="app-label" htmlFor={`relief-${category.id}`}>
             Claimed amount
@@ -287,7 +401,7 @@ function CategoryField({
         </div>
       ) : null}
 
-      {!category.autoApply && category.inputType === "count" ? (
+      {!autoApplied && category.inputType === "count" ? (
         <div className="mt-5">
           <label className="app-label" htmlFor={`relief-${category.id}`}>
             Quantity
@@ -298,6 +412,7 @@ function CategoryField({
             type="number"
             inputMode="numeric"
             min="0"
+            max={category.maxQuantity ?? undefined}
             step="1"
             value={countValue}
             disabled={disabled}
@@ -310,10 +425,12 @@ function CategoryField({
 
       {validationMessage ? (
         <p className="mt-2 text-sm leading-6 text-brand-blue">{validationMessage}</p>
-      ) : category.autoApply ? null : (
+      ) : autoApplied ? null : (
         <p className="app-help">
           {category.inputType === "count"
-            ? "Enter the number of qualifying dependants for this relief."
+            ? category.maxQuantity !== null
+              ? `Enter the number of qualifying dependants for this relief, up to ${category.maxQuantity}.`
+              : "Enter the number of qualifying dependants for this relief."
             : category.inputType === "fixed"
               ? "Tick this box only if you qualify for the fixed deduction."
               : "Enter only the eligible amount you want the backend to evaluate."}
@@ -324,13 +441,26 @@ function CategoryField({
 }
 
 export default function TaxCalculator() {
-  const [selectedYear, setSelectedYear] = useState(DEFAULT_POLICY_YEAR);
+  const searchParams = useSearchParams();
+  const prefillYear = Number(searchParams.get("year") ?? "");
+  const prefillCategoryId = searchParams.get("prefillCategory");
+  const prefillAmount = Number(searchParams.get("prefillAmount") ?? "");
+  const defaultSelectedYear =
+    Number.isInteger(prefillYear) && prefillYear > 0
+      ? prefillYear
+      : DEFAULT_POLICY_YEAR;
+  const [manualSelectedYear, setManualSelectedYear] = useState<number | null>(null);
   const [grossIncome, setGrossIncome] = useState("");
   const [zakat, setZakat] = useState("");
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    identity: true,
+    family: true,
+  });
   const [amountValues, setAmountValues] = useState<Record<string, string>>({});
   const [countValues, setCountValues] = useState<Record<string, string>>({});
   const [selectedValues, setSelectedValues] = useState<Record<string, boolean>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const selectedYear = manualSelectedYear ?? defaultSelectedYear;
 
   const policyYearsQuery = useQuery({
     queryKey: ["policy-years"],
@@ -340,6 +470,10 @@ export default function TaxCalculator() {
   const policyQuery = useQuery({
     queryKey: ["policy", selectedYear],
     queryFn: () => fetchPolicyYear(selectedYear),
+  });
+  const profileQuery = useQuery({
+    queryKey: ["profile"],
+    queryFn: fetchProfile,
   });
 
   const calculationMutation = useMutation({
@@ -354,17 +488,48 @@ export default function TaxCalculator() {
   ).sort((left, right) => left - right);
 
   const categories = policyQuery.data?.reliefCategories ?? [];
+  const savedProfile = profileQuery.data;
+  const visibleProfileCategories = savedProfile
+    ? categories.filter((category) => isCategoryVisibleForProfile(category, savedProfile))
+    : [];
+  const prefilledCategory =
+    prefillCategoryId && Number.isFinite(prefillAmount) && prefillAmount > 0
+      ? visibleProfileCategories.find((category) => category.id === prefillCategoryId)
+      : undefined;
+  const effectiveAmountValues =
+    prefilledCategory?.inputType === "amount"
+      ? {
+          [prefilledCategory.id]: prefillAmount.toFixed(2),
+          ...amountValues,
+        }
+      : amountValues;
+  const effectiveSelectedValues =
+    prefilledCategory?.inputType === "fixed"
+      ? {
+          [prefilledCategory.id]: true,
+          ...selectedValues,
+        }
+      : selectedValues;
+  const profileDrivenCodes = new Set(
+    savedProfile
+      ? visibleProfileCategories
+          .filter((category) =>
+            isProfileDrivenFixedCategoryActive(category, savedProfile),
+          )
+          .map((category) => category.code)
+      : [],
+  );
   const activeCodes = new Set<string>();
 
-  for (const category of categories) {
-    if (category.autoApply) {
+  for (const category of visibleProfileCategories) {
+    if (category.autoApply || profileDrivenCodes.has(category.code)) {
       activeCodes.add(category.code);
       continue;
     }
 
     if (
       category.inputType === "fixed" &&
-      selectedValues[category.id]
+      effectiveSelectedValues[category.id]
     ) {
       activeCodes.add(category.code);
       continue;
@@ -372,7 +537,7 @@ export default function TaxCalculator() {
 
     if (
       category.inputType === "amount" &&
-      (parseAmount(amountValues[category.id] ?? "") ?? 0) > 0
+      (parseAmount(effectiveAmountValues[category.id] ?? "") ?? 0) > 0
     ) {
       activeCodes.add(category.code);
       continue;
@@ -386,11 +551,18 @@ export default function TaxCalculator() {
     }
   }
 
+  const visibleCategories = visibleProfileCategories.filter(
+    (category) =>
+      category.requiresCategoryCode === null ||
+      activeCodes.has(category.requiresCategoryCode),
+  );
+  const defaultOpenSection = prefilledCategory?.section;
+
   const categoryValidationMessages: Record<string, string | null> = {};
-  for (const category of categories) {
+  for (const category of visibleCategories) {
     if (category.inputType === "amount") {
       categoryValidationMessages[category.id] = getMoneyFieldError(
-        amountValues[category.id] ?? "",
+        effectiveAmountValues[category.id] ?? "",
         category.maxAmount,
       );
       continue;
@@ -409,7 +581,7 @@ export default function TaxCalculator() {
   const sectionedCategories = sectionOrder
     .map((section) => ({
       section,
-      categories: categories.filter((category) => category.section === section),
+      categories: visibleCategories.filter((category) => category.section === section),
     }))
     .filter((sectionGroup) => sectionGroup.categories.length > 0);
 
@@ -420,7 +592,7 @@ export default function TaxCalculator() {
       return;
     }
 
-    setSelectedYear(nextYear);
+    setManualSelectedYear(nextYear);
     setAmountValues({});
     setCountValues({});
     setSelectedValues({});
@@ -429,7 +601,19 @@ export default function TaxCalculator() {
     calculationMutation.reset();
   }
 
+  function toggleSection(section: string) {
+    setExpandedSections((currentSections) => ({
+      ...currentSections,
+      [section]: !currentSections[section],
+    }));
+  }
+
   function buildPayload(): CalculatorRequest | null {
+    if (!savedProfile) {
+      setFormError("Wait for the saved profile to load before calculating.");
+      return null;
+    }
+
     const grossIncomeError = getGrossIncomeError(grossIncome);
     if (grossIncomeError) {
       setFormError(grossIncomeError);
@@ -442,7 +626,7 @@ export default function TaxCalculator() {
       return null;
     }
 
-    const invalidCategory = categories.find(
+    const invalidCategory = visibleCategories.find(
       (category) => categoryValidationMessages[category.id],
     );
     if (invalidCategory) {
@@ -452,8 +636,11 @@ export default function TaxCalculator() {
 
     const selectedReliefs: CalculatorRequest["selectedReliefs"] = [];
 
-    for (const category of categories) {
-      if (category.autoApply) {
+    for (const category of visibleCategories) {
+      if (
+        category.autoApply ||
+        isProfileDrivenFixedCategoryActive(category, savedProfile)
+      ) {
         continue;
       }
 
@@ -465,7 +652,7 @@ export default function TaxCalculator() {
       }
 
       if (category.inputType === "fixed") {
-        if (selectedValues[category.id]) {
+        if (effectiveSelectedValues[category.id]) {
           selectedReliefs.push({
             reliefCategoryId: category.id,
             selected: true,
@@ -485,7 +672,7 @@ export default function TaxCalculator() {
         continue;
       }
 
-      const claimedAmount = parseAmount(amountValues[category.id] ?? "");
+      const claimedAmount = parseAmount(effectiveAmountValues[category.id] ?? "");
       if (claimedAmount && claimedAmount > 0) {
         selectedReliefs.push({
           reliefCategoryId: category.id,
@@ -511,6 +698,7 @@ export default function TaxCalculator() {
     }
 
     setFormError(null);
+    scrollToCalculationResult();
     calculationMutation.mutate(payload);
   }
 
@@ -524,39 +712,30 @@ export default function TaxCalculator() {
     policyYearsQuery.error instanceof Error
       ? policyYearsQuery.error.message
       : null;
+  const profileLoadError =
+    profileQuery.error instanceof Error ? profileQuery.error.message : null;
+  const profileFacts = savedProfile ? buildProfileFactList(savedProfile) : [];
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+    <div className="space-y-6">
       <section className="app-panel p-6 sm:p-7">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="app-eyebrow">Income Tax Calculator</p>
-            <h2 className="mt-3 text-3xl text-brand-black">
-              Resident individual tax calculator
-            </h2>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-brand-muted">
-              Enter gross income, choose an assessment year from 2018 to 2025,
-              then complete the relevant relief sections. Fixed reliefs, dependant
-              counts, and capped expenses are all handled by the backend rules
-              behind this page.
-            </p>
           </div>
-          <span className={policyQuery.isFetching ? "app-pill-blue" : "app-pill"}>
-            {policyQuery.isFetching ? "Refreshing policy" : "Ready"}
-          </span>
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           <SummaryTile label="Assessment year" value={String(selectedYear)} />
           <SummaryTile
-            label="Relief categories"
-            value={String(categories.length)}
+            label="Reliefs shown"
+            value={String(visibleCategories.length)}
           />
           <SummaryTile label="Tax rebate" value="Auto up to RM 400" />
         </div>
 
         <form className="mt-8 space-y-8" onSubmit={handleSubmit}>
-          <section className="grid gap-5 lg:grid-cols-3">
+          <section className="space-y-5">
             <div>
               <label className="app-label" htmlFor="policyYear">
                 Assessment year
@@ -644,10 +823,62 @@ export default function TaxCalculator() {
             </div>
           </section>
 
+          <section className="rounded-card border border-brand-line bg-brand-ice p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-3xl">
+                <p className="app-eyebrow">Saved Profile</p>
+                <h3 className="mt-3 text-2xl text-brand-black">
+                  Family and disability settings come from your profile
+                </h3>
+                <p className="mt-3 text-sm leading-7 text-brand-muted">
+                  The calculator now uses the saved profile to decide which
+                  spouse, child, and disability reliefs should appear and which
+                  fixed reliefs should be applied automatically.
+                </p>
+              </div>
+              <Link href="/profile" className="app-button-secondary">
+                Edit profile
+              </Link>
+            </div>
+
+            {profileQuery.isLoading ? (
+              <div className="mt-5 rounded-card border border-brand-line bg-brand-white px-4 py-4 text-sm leading-6 text-brand-muted">
+                Loading the saved profile for this calculation...
+              </div>
+            ) : profileLoadError ? (
+              <div className="mt-5 rounded-card border border-brand-black bg-brand-black px-4 py-4 text-sm leading-6 text-brand-white">
+                {profileLoadError}
+              </div>
+            ) : savedProfile ? (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {profileFacts.map((fact) => (
+                  <span key={fact} className="app-pill">
+                    {fact}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </section>
+
           {policyQuery.isLoading ? (
             <section className="rounded-card border border-brand-line bg-brand-ice p-5">
               <p className="text-sm leading-6 text-brand-muted">
                 Loading the relief structure for policy year {selectedYear}...
+              </p>
+            </section>
+          ) : profileQuery.isLoading ? (
+            <section className="rounded-card border border-brand-line bg-brand-ice p-5">
+              <p className="text-sm leading-6 text-brand-muted">
+                Loading the saved profile before showing profile-specific reliefs...
+              </p>
+            </section>
+          ) : profileLoadError ? (
+            <section className="rounded-card border border-brand-black bg-brand-black p-5 text-brand-white">
+              <p className="text-sm font-semibold text-brand-blue">
+                Profile request failed
+              </p>
+              <p className="mt-2 text-sm leading-6 text-brand-white/80">
+                {profileLoadError}
               </p>
             </section>
           ) : policyLoadError ? (
@@ -662,61 +893,71 @@ export default function TaxCalculator() {
           ) : (
             <div className="space-y-8">
               {sectionedCategories.map((sectionGroup) => (
-                <section key={sectionGroup.section} className="space-y-4">
-                  <div>
-                    <p className="app-eyebrow">
-                      {sectionGroup.section.replaceAll("_", " ")}
-                    </p>
-                    <h3 className="mt-3 text-2xl text-brand-black">
-                      {sectionContent[sectionGroup.section]?.title ??
-                        sectionGroup.section}
-                    </h3>
-                    <p className="mt-2 text-sm leading-6 text-brand-muted">
-                      {sectionContent[sectionGroup.section]?.detail}
-                    </p>
-                  </div>
+                <AccordionSection
+                  key={sectionGroup.section}
+                  section={sectionGroup.section}
+                  title={
+                    sectionContent[sectionGroup.section]?.title ??
+                    sectionGroup.section
+                  }
+                  detail={sectionContent[sectionGroup.section]?.detail ?? ""}
+                  itemCount={sectionGroup.categories.length}
+                  isOpen={
+                    expandedSections[sectionGroup.section] ??
+                    sectionGroup.section === defaultOpenSection
+                  }
+                  onToggle={() => toggleSection(sectionGroup.section)}
+                >
+                  <div className="space-y-6">
+                    {sectionGroup.categories.length ? (
+                      <div className="grid gap-4">
+                        {sectionGroup.categories.map((category) => {
+                          const profileApplied =
+                            savedProfile !== undefined &&
+                            isProfileDrivenFixedCategoryActive(category, savedProfile);
 
-                  <div className="grid gap-4">
-                    {sectionGroup.categories.map((category) => {
-                      const disabled =
-                        category.requiresCategoryCode !== null &&
-                        !activeCodes.has(category.requiresCategoryCode);
-
-                      return (
-                        <CategoryField
-                          key={category.id}
-                          category={category}
-                          amountValue={amountValues[category.id] ?? ""}
-                          countValue={countValues[category.id] ?? ""}
-                          selected={selectedValues[category.id] ?? false}
-                          validationMessage={categoryValidationMessages[category.id]}
-                          disabled={disabled}
-                          onAmountChange={(nextValue) => {
-                            setAmountValues((currentValues) => ({
-                              ...currentValues,
-                              [category.id]: nextValue,
-                            }));
-                            setFormError(null);
-                          }}
-                          onCountChange={(nextValue) => {
-                            setCountValues((currentValues) => ({
-                              ...currentValues,
-                              [category.id]: nextValue,
-                            }));
-                            setFormError(null);
-                          }}
-                          onSelectedChange={(nextValue) => {
-                            setSelectedValues((currentValues) => ({
-                              ...currentValues,
-                              [category.id]: nextValue,
-                            }));
-                            setFormError(null);
-                          }}
-                        />
-                      );
-                    })}
+                          return (
+                            <CategoryField
+                              key={category.id}
+                              category={category}
+                              amountValue={effectiveAmountValues[category.id] ?? ""}
+                              countValue={countValues[category.id] ?? ""}
+                              selected={effectiveSelectedValues[category.id] ?? false}
+                              profileApplied={profileApplied}
+                              validationMessage={categoryValidationMessages[category.id]}
+                              disabled={false}
+                              onAmountChange={(nextValue) => {
+                                setAmountValues((currentValues) => ({
+                                  ...currentValues,
+                                  [category.id]: nextValue,
+                                }));
+                                setFormError(null);
+                              }}
+                              onCountChange={(nextValue) => {
+                                setCountValues((currentValues) => ({
+                                  ...currentValues,
+                                  [category.id]: nextValue,
+                                }));
+                                setFormError(null);
+                              }}
+                              onSelectedChange={(nextValue) => {
+                                setSelectedValues((currentValues) => ({
+                                  ...currentValues,
+                                  [category.id]: nextValue,
+                                }));
+                                setFormError(null);
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-card border border-dashed border-brand-line bg-brand-ice px-4 py-4 text-sm leading-6 text-brand-muted">
+                        No relief items are visible in this section yet.
+                      </div>
+                    )}
                   </div>
-                </section>
+                </AccordionSection>
               ))}
             </div>
           )}
@@ -732,8 +973,11 @@ export default function TaxCalculator() {
             disabled={
               calculationMutation.isPending ||
               policyQuery.isLoading ||
+              profileQuery.isLoading ||
               !policyQuery.data ||
-              !!policyLoadError
+              !savedProfile ||
+              !!policyLoadError ||
+              !!profileLoadError
             }
             className="app-button-primary w-full sm:w-auto"
           >
@@ -742,40 +986,38 @@ export default function TaxCalculator() {
         </form>
       </section>
 
-      <div className="space-y-6 xl:sticky xl:top-24">
-        <section className="app-panel-muted p-6">
-          <p className="app-eyebrow">Notes</p>
-          <h2 className="mt-3 text-2xl text-brand-black">What this calculator covers</h2>
-          <div className="mt-5 space-y-3">
-            <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
-              <p className="text-sm leading-6 text-brand-black">
-                The calculator now supports resident-individual assessment years
-                2018 through 2025 with year-specific relief categories, caps,
-                and tax brackets.
-              </p>
-            </article>
-            <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
-              <p className="text-sm leading-6 text-brand-black">
-                Self relief is applied automatically, shared medical caps are
-                enforced in the backend, and low-income rebates are calculated
-                automatically.
-              </p>
-            </article>
-            <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
-              <p className="text-sm leading-6 text-brand-black">
-                This flow focuses on gross income, reliefs, zakat, and final tax due.
-                PCB and refund balancing are not included yet.
-              </p>
-            </article>
-          </div>
-        </section>
+      <section className="app-panel-muted p-6">
+        <p className="app-eyebrow">Notes</p>
+        <h2 className="mt-3 text-2xl text-brand-black">What this calculator covers</h2>
+        <div className="mt-5 space-y-3">
+          <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
+            <p className="text-sm leading-6 text-brand-black">
+              The calculator now supports resident-individual assessment years
+              2018 through 2025 with year-specific relief categories, caps,
+              and tax brackets.
+            </p>
+          </article>
+          <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
+            <p className="text-sm leading-6 text-brand-black">
+              Self relief is applied automatically, saved-profile disability and
+              spouse reliefs are resolved in the backend, and low-income rebates
+              are calculated automatically.
+            </p>
+          </article>
+          <article className="rounded-card border border-brand-line bg-brand-white px-4 py-4">
+            <p className="text-sm leading-6 text-brand-black">
+              This flow focuses on gross income, reliefs, zakat, and final tax due.
+              PCB and refund balancing are not included yet.
+            </p>
+          </article>
+        </div>
+      </section>
 
-        <CalculationResult
-          result={calculationMutation.data}
-          isPending={calculationMutation.isPending}
-          errorMessage={calculationError}
-        />
-      </div>
+      <CalculationResult
+        result={calculationMutation.data}
+        isPending={calculationMutation.isPending}
+        errorMessage={calculationError}
+      />
     </div>
   );
 }

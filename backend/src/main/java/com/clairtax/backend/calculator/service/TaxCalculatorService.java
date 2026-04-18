@@ -12,6 +12,11 @@ import com.clairtax.backend.calculator.repository.ReliefCategoryRepository;
 import com.clairtax.backend.calculator.repository.TaxBracketRepository;
 import com.clairtax.backend.policyyear.entity.PolicyYear;
 import com.clairtax.backend.policyyear.repository.PolicyYearRepository;
+import com.clairtax.backend.user.entity.AppUser;
+import com.clairtax.backend.user.repository.AppUserRepository;
+import com.clairtax.backend.user.service.CurrentUser;
+import com.clairtax.backend.user.service.CurrentUserProvider;
+import com.clairtax.backend.user.service.ProfileReliefResolver;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,15 +41,24 @@ public class TaxCalculatorService {
     private final PolicyYearRepository policyYearRepository;
     private final ReliefCategoryRepository reliefCategoryRepository;
     private final TaxBracketRepository taxBracketRepository;
+    private final CurrentUserProvider currentUserProvider;
+    private final AppUserRepository appUserRepository;
+    private final ProfileReliefResolver profileReliefResolver;
 
     public TaxCalculatorService(
             PolicyYearRepository policyYearRepository,
             ReliefCategoryRepository reliefCategoryRepository,
-            TaxBracketRepository taxBracketRepository
+            TaxBracketRepository taxBracketRepository,
+            CurrentUserProvider currentUserProvider,
+            AppUserRepository appUserRepository,
+            ProfileReliefResolver profileReliefResolver
     ) {
         this.policyYearRepository = policyYearRepository;
         this.reliefCategoryRepository = reliefCategoryRepository;
         this.taxBracketRepository = taxBracketRepository;
+        this.currentUserProvider = currentUserProvider;
+        this.appUserRepository = appUserRepository;
+        this.profileReliefResolver = profileReliefResolver;
     }
 
     public CalculateTaxResponse calculate(CalculateTaxRequest request) {
@@ -58,6 +72,7 @@ public class TaxCalculatorService {
 
         List<ReliefCategory> reliefCategories = reliefCategoryRepository
                 .findAllByPolicyYearIdOrderByDisplayOrderAscNameAsc(policyYear.getId());
+        AppUser currentUser = getCurrentUserEntity();
 
         if (reliefCategories.isEmpty()) {
             throw new CalculatorValidationException(
@@ -67,15 +82,22 @@ public class TaxCalculatorService {
 
         Map<UUID, ReliefCategory> reliefCategoriesById = toReliefCategoryMap(
                 reliefCategories,
+                currentUser,
                 request.policyYear(),
                 request.selectedReliefs()
         );
+        List<ReliefCategory> visibleReliefCategories = reliefCategories.stream()
+                .filter(category -> reliefCategoriesById.containsKey(category.getId()))
+                .toList();
         Map<String, BigDecimal> activeReliefAmounts = calculateActiveReliefAmounts(
-                reliefCategories,
+                visibleReliefCategories,
                 request.selectedReliefs()
         );
+        activeReliefAmounts.putAll(
+                profileReliefResolver.resolveProfileDrivenAmounts(currentUser, visibleReliefCategories)
+        );
 
-        BigDecimal totalRelief = calculateTotalRelief(reliefCategories, activeReliefAmounts);
+        BigDecimal totalRelief = calculateTotalRelief(visibleReliefCategories, activeReliefAmounts);
         BigDecimal chargeableIncome = toMoney(grossIncome.subtract(totalRelief).max(ZERO));
 
         List<TaxBracket> taxBrackets = taxBracketRepository.findAllByPolicyYearIdOrderByMinIncomeAsc(policyYear.getId());
@@ -109,22 +131,34 @@ public class TaxCalculatorService {
 
     private Map<UUID, ReliefCategory> toReliefCategoryMap(
             List<ReliefCategory> reliefCategories,
+            AppUser currentUser,
             Integer policyYear,
             List<ReliefClaimRequest> selectedReliefs
     ) {
-        Map<UUID, ReliefCategory> reliefCategoriesById = reliefCategories.stream()
+        Map<UUID, ReliefCategory> allReliefCategoriesById = reliefCategories.stream()
+                .collect(LinkedHashMap::new, (map, category) -> map.put(category.getId(), category), Map::putAll);
+        Map<UUID, ReliefCategory> visibleReliefCategoriesById = reliefCategories.stream()
+                .filter(category -> profileReliefResolver.isCategoryVisible(currentUser, category))
                 .collect(LinkedHashMap::new, (map, category) -> map.put(category.getId(), category), Map::putAll);
 
         for (ReliefClaimRequest selectedRelief : selectedReliefs) {
-            if (!reliefCategoriesById.containsKey(selectedRelief.reliefCategoryId())) {
+            ReliefCategory selectedCategory = allReliefCategoriesById.get(selectedRelief.reliefCategoryId());
+            if (selectedCategory == null) {
                 throw new CalculatorValidationException(
                         "Relief category " + selectedRelief.reliefCategoryId()
                                 + " does not belong to policy year " + policyYear
                 );
             }
+
+            if (!visibleReliefCategoriesById.containsKey(selectedRelief.reliefCategoryId())) {
+                throw new CalculatorValidationException(
+                        "Relief category " + selectedCategory.getName()
+                                + " is not available for the saved profile"
+                );
+            }
         }
 
-        return reliefCategoriesById;
+        return visibleReliefCategoriesById;
     }
 
     private Map<String, BigDecimal> calculateActiveReliefAmounts(
@@ -149,6 +183,10 @@ public class TaxCalculatorService {
         Map<String, Integer> exclusiveSelections = new LinkedHashMap<>();
 
         for (ReliefCategory reliefCategory : reliefCategories) {
+            if (profileReliefResolver.isServerOwnedFixedCode(reliefCategory.getCode())) {
+                continue;
+            }
+
             ReliefClaimRequest selectedRelief = selectedReliefsById.get(reliefCategory.getId());
             BigDecimal rawReliefAmount = calculateRawReliefAmount(reliefCategory, selectedRelief);
 
@@ -238,6 +276,14 @@ public class TaxCalculatorService {
         if (reliefCategory.getUnitAmount() == null) {
             throw new CalculatorValidationException(
                     "Relief category " + reliefCategory.getName() + " is missing its unit amount"
+            );
+        }
+
+        if (reliefCategory.getMaxQuantity() != null
+                && selectedRelief.quantity() > reliefCategory.getMaxQuantity()) {
+            throw new CalculatorValidationException(
+                    "Relief category " + reliefCategory.getName()
+                            + " cannot exceed quantity " + reliefCategory.getMaxQuantity()
             );
         }
 
@@ -340,5 +386,13 @@ public class TaxCalculatorService {
 
     private BigDecimal toMoney(BigDecimal value) {
         return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private AppUser getCurrentUserEntity() {
+        CurrentUser currentUser = currentUserProvider.getCurrentUser();
+        return appUserRepository.findById(currentUser.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Current user " + currentUser.email() + " was not found"
+                ));
     }
 }

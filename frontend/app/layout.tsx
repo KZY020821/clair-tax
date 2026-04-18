@@ -20,7 +20,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
   const currentYear = new Date().getFullYear();
 
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body suppressHydrationWarning>
         <Providers>
           <AppShell currentYear={currentYear}>{children}</AppShell>
