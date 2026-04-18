@@ -4,7 +4,6 @@ import com.clairtax.backend.user.dto.ProfileResponse;
 import com.clairtax.backend.user.dto.UpdateProfileRequest;
 import com.clairtax.backend.user.service.ProfileService;
 import jakarta.validation.Valid;
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -16,7 +15,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @Validated
-@Profile("!local")
 @RequestMapping("/api/profile")
 public class ProfileController {
 

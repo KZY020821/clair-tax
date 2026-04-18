@@ -1,14 +1,12 @@
 package com.clairtax.backend.auth.service;
 
 import com.clairtax.backend.auth.config.AuthProperties;
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 
 @Component
-@Profile("!local")
 public class SessionCookieService {
 
     private final AuthProperties authProperties;

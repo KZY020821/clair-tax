@@ -19,7 +19,6 @@ import com.clairtax.backend.auth.service.VerifiedMagicLinkSession;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -35,7 +34,6 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @RestController
-@Profile("!local")
 @Validated
 @RequestMapping("/api/auth")
 public class AuthController {

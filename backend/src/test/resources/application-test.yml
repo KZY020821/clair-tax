@@ -1,0 +1,46 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:clair_tax_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;NON_KEYWORDS=VALUE,YEAR
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+  mail:
+    host: localhost
+    port: 25
+    username: clairtax.notification@gmail.com
+    password: test-password
+
+clair:
+  auth:
+    frontend-base-url: http://localhost:3000
+    public-base-url: http://localhost:8080
+    mobile-app-scheme: clair-tax
+    magic-link-ttl: PT15M
+    otp-ttl: PT10M
+    otp-resend-cooldown: PT30S
+    otp-rate-limit-window: PT1H
+    otp-max-attempts: 5
+    otp-max-requests-per-email: 5
+    otp-max-requests-per-ip: 20
+    otp-max-requests-per-device: 10
+    session-ttl: P30D
+    cookie-name: clair_tax_session
+  dev-user:
+    email: dev@taxrelief.local
+  receipts:
+    bucket-name: test-clair-tax-receipts
+    upload-intent-ttl: PT15M
+    internal-api-token: test-internal-token
+    aws:
+      region: ap-southeast-1
+    queue:
+      url: https://sqs.ap-southeast-1.amazonaws.com/000000000000/test-receipts.fifo

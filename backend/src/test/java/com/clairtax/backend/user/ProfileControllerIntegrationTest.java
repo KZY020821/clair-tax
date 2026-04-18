@@ -12,10 +12,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.context.annotation.Import;
+import com.clairtax.backend.IntegrationTestConfig;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.is;
@@ -30,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Import(IntegrationTestConfig.class)
 class ProfileControllerIntegrationTest {
 
     private static final UUID POLICY_YEAR_2025_ID = UUID.fromString("71111111-1111-4111-8111-111111111111");
@@ -49,9 +50,6 @@ class ProfileControllerIntegrationTest {
 
     @Value("${clair.dev-user.email}")
     private String devUserEmail;
-
-    @Value("${clair.receipts.storage-path}")
-    private String receiptStoragePath;
 
     @Value("${clair.receipts.internal-api-token}")
     private String internalApiToken;
@@ -82,18 +80,6 @@ class ProfileControllerIntegrationTest {
                         """,
                 devUserEmail
         );
-
-        Path storageDirectory = Path.of(receiptStoragePath);
-        if (Files.exists(storageDirectory)) {
-            try (var files = Files.list(storageDirectory)) {
-                files.forEach(path -> {
-                    try {
-                        Files.deleteIfExists(path);
-                    } catch (Exception ignored) {
-                    }
-                });
-            }
-        }
 
         devUserId = appUserRepository.findByEmail(devUserEmail)
                 .orElseThrow(() -> new AssertionError("Expected bootstrapped dev user to exist"))
@@ -257,16 +243,6 @@ class ProfileControllerIntegrationTest {
                         .content("{}"))
                 .andExpect(status().isOk());
 
-        String storedReceiptKey = jdbcTemplate.queryForObject(
-                "SELECT s3_key FROM receipts WHERE id = ?",
-                String.class,
-                UUID.fromString(receiptId)
-        );
-        Path storedReceipt = Path.of(receiptStoragePath).resolve(storedReceiptKey);
-        if (!Files.exists(storedReceipt)) {
-            throw new AssertionError("Expected uploaded receipt file to be stored");
-        }
-
         mockMvc.perform(delete("/api/profile/account"))
                 .andExpect(status().isNoContent());
 
@@ -286,10 +262,6 @@ class ProfileControllerIntegrationTest {
         mockMvc.perform(get("/api/receipts"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()", is(0)));
-
-        if (Files.exists(storedReceipt)) {
-            throw new AssertionError("Expected reset to remove stored receipt files");
-        }
 
         Integer workspaceCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM user_policy_years WHERE user_id = ?",

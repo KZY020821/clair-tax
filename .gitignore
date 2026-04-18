@@ -27,6 +27,7 @@ frontend/coverage/
 backend/target/
 backend/.mvn/wrapper/maven-wrapper.jar
 *.class
+backend/src/main/resources/*
 
 # Python artifacts
 .venv/

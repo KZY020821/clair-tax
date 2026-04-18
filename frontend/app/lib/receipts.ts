@@ -58,25 +58,19 @@ const receiptSchema = z.object({
   updatedAt: z.string().datetime({ offset: true }),
 });
 
-const receiptUploadIntentSchema = z.object({
-  uploadIntentId: z.string().uuid(),
-  uploadUrl: z.string().min(1),
-  uploadMethod: z.string().min(1),
-  uploadHeaders: z.record(z.string(), z.string()),
-  expiresAt: z.string().datetime({ offset: true }),
-});
-
 const receiptYearsSchema = z.array(z.number().int());
 const receiptsSchema = z.array(receiptSchema);
 
 export type Receipt = z.infer<typeof receiptSchema>;
+
 export type UploadYearReceiptRequest = {
-  reliefCategoryId: string;
+  merchantName: string;
+  receiptDate: string;
+  amount: string;
+  reliefCategoryId?: string | null;
   notes?: string | null;
   file: File;
 };
-export type ReceiptUploadIntent = z.infer<typeof receiptUploadIntentSchema>;
-
 export type ReceiptMutationRequest = {
   policyYear: number;
   merchantName: string;
@@ -88,14 +82,6 @@ export type ReceiptMutationRequest = {
   fileUrl?: string | null;
 };
 
-export type ConfirmReceiptReviewRequest = {
-  merchantName?: string | null;
-  receiptDate?: string | null;
-  amount?: number | null;
-  currency?: string | null;
-  reliefCategoryId?: string | null;
-  notes?: string | null;
-};
 
 function getHttpStatusErrorMessage(status: number): string | null {
   switch (status) {
@@ -298,134 +284,28 @@ export async function uploadReceiptForUserYear(
   year: number,
   payload: UploadYearReceiptRequest,
 ): Promise<Receipt> {
-  const uploadIntentResponse = await fetch(
-    buildBackendUrl(`/api/user-years/${year}/receipts/upload-intent`),
-    {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        reliefCategoryId: payload.reliefCategoryId,
-        fileName: payload.file.name,
-        mimeType: payload.file.type || "application/octet-stream",
-        fileSizeBytes: payload.file.size,
-      }),
-    },
-  );
-
-  if (!uploadIntentResponse.ok) {
-    throw new Error(
-      await getApiErrorMessage(
-        uploadIntentResponse,
-        `Failed to create receipt upload intent for ${year} (${uploadIntentResponse.status})`,
-      ),
-    );
+  const formData = new FormData();
+  formData.append("merchantName", payload.merchantName);
+  formData.append("receiptDate", payload.receiptDate);
+  formData.append("amount", payload.amount);
+  if (payload.reliefCategoryId) {
+    formData.append("reliefCategoryId", payload.reliefCategoryId);
   }
+  if (payload.notes) {
+    formData.append("notes", payload.notes);
+  }
+  formData.append("file", payload.file);
 
-  const uploadIntentData: unknown = await uploadIntentResponse.json();
-  const uploadIntent = receiptUploadIntentSchema.parse(uploadIntentData);
-
-  const uploadResponse = await fetch(buildBackendUrl(uploadIntent.uploadUrl), {
-    method: uploadIntent.uploadMethod,
-    headers: uploadIntent.uploadHeaders,
-    body: payload.file,
+  const response = await backendFetch(`/api/user-years/${year}/receipts`, {
+    method: "POST",
+    body: formData,
   });
 
-  if (!uploadResponse.ok) {
-    throw new Error(
-      await getApiErrorMessage(
-        uploadResponse,
-        `Failed to upload receipt file for ${year} (${uploadResponse.status})`,
-      ),
-    );
-  }
-
-  const response = await fetch(
-    buildBackendUrl(`/api/user-years/${year}/receipts/confirm-upload`),
-    {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        uploadIntentId: uploadIntent.uploadIntentId,
-        notes: payload.notes ?? null,
-      }),
-    },
-  );
-
   if (!response.ok) {
     throw new Error(
       await getApiErrorMessage(
         response,
-        `Failed to confirm receipt upload for ${year} (${response.status})`,
-      ),
-    );
-  }
-
-  const data: unknown = await response.json();
-
-  return receiptSchema.parse(data);
-}
-
-export async function confirmReceiptReview(
-  receiptId: string,
-  payload: ConfirmReceiptReviewRequest = {},
-): Promise<Receipt> {
-  const response = await fetch(
-    buildBackendUrl(`/api/receipts/${receiptId}/review/confirm`),
-    {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      await getApiErrorMessage(
-        response,
-        `Failed to confirm receipt review (${response.status})`,
-      ),
-    );
-  }
-
-  const data: unknown = await response.json();
-
-  return receiptSchema.parse(data);
-}
-
-export async function rejectReceiptReview(
-  receiptId: string,
-  notes?: string | null,
-): Promise<Receipt> {
-  const response = await fetch(
-    buildBackendUrl(`/api/receipts/${receiptId}/review/reject`),
-    {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ notes: notes ?? null }),
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      await getApiErrorMessage(
-        response,
-        `Failed to reject receipt review (${response.status})`,
+        `Failed to upload receipt for ${year} (${response.status})`,
       ),
     );
   }

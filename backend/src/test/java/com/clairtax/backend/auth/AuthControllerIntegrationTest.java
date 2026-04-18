@@ -26,6 +26,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.context.annotation.Import;
+import com.clairtax.backend.IntegrationTestConfig;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.InputStream;
@@ -57,6 +59,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = "clair.auth.public-base-url=http://192.168.0.8:8080")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Import(IntegrationTestConfig.class)
 class AuthControllerIntegrationTest {
 
     private static final Pattern URL_PATTERN = Pattern.compile("(https?://[^\\s\"'<>]+)");

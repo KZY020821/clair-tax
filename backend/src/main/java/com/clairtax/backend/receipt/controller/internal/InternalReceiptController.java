@@ -7,7 +7,6 @@ import com.clairtax.backend.receipt.service.InternalReceiptApiAccessVerifier;
 import com.clairtax.backend.receipt.service.ReceiptService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,7 +19,6 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@Profile("!local")
 @RequestMapping("/api/internal/receipts")
 public class InternalReceiptController {
 
