@@ -7,28 +7,35 @@ import com.clairtax.backend.user.entity.AppUser;
 import com.clairtax.backend.user.repository.AppUserRepository;
 import com.clairtax.backend.user.service.CurrentUser;
 import com.clairtax.backend.user.service.CurrentUserProvider;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.core.Ordered;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.OffsetDateTime;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @TestConfiguration
 public class IntegrationTestConfig {
 
     static final String TEST_USER_EMAIL = "dev@taxrelief.local";
     private static final String TEST_UPLOAD_BASE = "/api/internal/test-uploads";
+
+    private final Map<String, byte[]> uploadedObjects = new ConcurrentHashMap<>();
 
     @Bean
     public ApplicationRunner testUserBootstrap(AppUserRepository appUserRepository) {
@@ -66,21 +73,27 @@ public class IntegrationTestConfig {
 
             @Override
             public Resource load(String objectKey) {
-                return new ByteArrayResource("test-receipt-content".getBytes());
+                byte[] data = uploadedObjects.getOrDefault(objectKey, "test-receipt-content".getBytes());
+                return new ByteArrayResource(data);
             }
 
             @Override
             public boolean exists(String objectKey) {
-                return true;
+                return uploadedObjects.containsKey(objectKey);
             }
 
             @Override
-            public long size(String objectKey) {
-                return 0L;
+            public long size(String objectKey) throws IOException {
+                byte[] data = uploadedObjects.get(objectKey);
+                if (data == null) {
+                    throw new IOException("Object not found in test store: " + objectKey);
+                }
+                return data.length;
             }
 
             @Override
             public void delete(String objectKey) {
+                uploadedObjects.remove(objectKey);
             }
         };
     }
@@ -91,12 +104,40 @@ public class IntegrationTestConfig {
         return jobMessage -> {};
     }
 
-    @RestController
-    @RequestMapping(TEST_UPLOAD_BASE)
-    static class TestUploadEndpoint {
-        @PutMapping("/{objectKey}")
-        public ResponseEntity<Void> handleUpload(@PathVariable String objectKey) {
-            return ResponseEntity.noContent().build();
+    @Bean
+    public FilterRegistrationBean<TestUploadFilter> testUploadFilter() {
+        FilterRegistrationBean<TestUploadFilter> reg = new FilterRegistrationBean<>(
+                new TestUploadFilter(uploadedObjects, TEST_UPLOAD_BASE)
+        );
+        reg.addUrlPatterns("/*");
+        reg.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return reg;
+    }
+
+    static class TestUploadFilter implements Filter {
+
+        private final Map<String, byte[]> uploadedObjects;
+        private final String basePath;
+
+        TestUploadFilter(Map<String, byte[]> uploadedObjects, String basePath) {
+            this.uploadedObjects = uploadedObjects;
+            this.basePath = basePath;
+        }
+
+        @Override
+        public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
+                throws IOException, ServletException {
+            HttpServletRequest request = (HttpServletRequest) req;
+            HttpServletResponse response = (HttpServletResponse) res;
+            String uri = request.getRequestURI();
+            if ("PUT".equals(request.getMethod()) && uri.startsWith(basePath + "/")) {
+                String objectKey = uri.substring(basePath.length() + 1);
+                byte[] body = request.getInputStream().readAllBytes();
+                uploadedObjects.put(objectKey, body);
+                response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+                return;
+            }
+            chain.doFilter(req, res);
         }
     }
 }

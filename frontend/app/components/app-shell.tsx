@@ -90,9 +90,14 @@ function ChevronDownIcon(props: IconProps) {
 
 function SidebarIcon({
   icon: Icon,
-}: Readonly<{ icon: ComponentType<IconProps> }>) {
+  active,
+}: Readonly<{ icon: ComponentType<IconProps>; active?: boolean }>) {
   return (
-    <span className="flex h-8 w-8 items-center justify-center rounded-full border border-brand-line bg-brand-white">
+    <span
+      className={`flex h-7 w-7 items-center justify-center rounded-md ${
+        active ? "bg-white/20" : "bg-brand-ice border border-brand-line"
+      }`}
+    >
       <Icon className="h-4 w-4" />
     </span>
   );
@@ -100,12 +105,10 @@ function SidebarIcon({
 
 function AuthLoadingScreen({ label }: Readonly<{ label: string }>) {
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-10 sm:px-6">
-      <section className="app-panel flex w-full max-w-xl flex-col gap-4 p-8 text-center sm:p-10">
+    <div className="flex min-h-screen items-center justify-center bg-brand-ice px-4 py-10 sm:px-6">
+      <section className="app-panel flex w-full max-w-md flex-col gap-4 p-8 text-center sm:p-10">
         <span className="app-pill-blue self-center">Clair Tax</span>
-        <h1 className="text-3xl text-brand-black sm:text-4xl">
-          {label}
-        </h1>
+        <h1 className="text-2xl text-brand-black sm:text-3xl">{label}</h1>
         <p className="text-sm leading-7 text-brand-muted">
           We&apos;re checking the current browser session so your dashboard stays in sync.
         </p>
@@ -114,20 +117,16 @@ function AuthLoadingScreen({ label }: Readonly<{ label: string }>) {
   );
 }
 
-function AuthErrorScreen({
-  onRetry,
-}: Readonly<{
-  onRetry: () => void;
-}>) {
+function AuthErrorScreen({ onRetry }: Readonly<{ onRetry: () => void }>) {
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-10 sm:px-6">
-      <section className="app-panel flex w-full max-w-xl flex-col gap-4 p-8 text-center sm:p-10">
-        <span className="app-pill">Session error</span>
-        <h1 className="text-3xl text-brand-black sm:text-4xl">
+    <div className="flex min-h-screen items-center justify-center bg-brand-ice px-4 py-10 sm:px-6">
+      <section className="app-panel flex w-full max-w-md flex-col gap-4 p-8 text-center sm:p-10">
+        <span className="app-pill self-center">Session error</span>
+        <h1 className="text-2xl text-brand-black sm:text-3xl">
           We couldn&apos;t reach the sign-in service.
         </h1>
         <p className="text-sm leading-7 text-brand-muted">
-          Check that the backend is running on localhost, then retry the session check.
+          Check that the backend is running, then retry the session check.
         </p>
         <div className="flex justify-center">
           <button type="button" onClick={onRetry} className="app-button-primary">
@@ -141,23 +140,6 @@ function AuthErrorScreen({
 
 function isActivePath(pathname: string, href: string) {
   return href === "/" ? pathname === href : pathname.startsWith(href);
-}
-
-function FooterTextLink({
-  href,
-  label,
-}: Readonly<{
-  href: string;
-  label: string;
-}>) {
-  return (
-    <Link
-      href={href}
-      className="text-sm text-brand-muted transition hover:text-brand-black"
-    >
-      {label}
-    </Link>
-  );
 }
 
 export default function AppShell({ children, currentYear }: AppShellProps) {
@@ -179,7 +161,6 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
     } else {
       document.body.style.overflow = "";
     }
-
     return () => {
       document.body.style.overflow = "";
     };
@@ -215,30 +196,22 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
   }, [queryClient]);
 
   useEffect(() => {
-    if (!authSessionQuery.isSuccess) {
-      return;
-    }
+    if (!authSessionQuery.isSuccess) return;
 
     if (authSessionQuery.data.authenticated) {
       if (!hasBroadcastSignedInRef.current) {
         hasBroadcastSignedInRef.current = true;
         broadcastAuthEvent("signed-in");
       }
-
       if (isLoginRoute) {
-        startTransition(() => {
-          router.replace("/");
-        });
+        startTransition(() => router.replace("/"));
       }
       return;
     }
 
     hasBroadcastSignedInRef.current = false;
-
     if (!isLoginRoute) {
-      startTransition(() => {
-        router.replace("/login");
-      });
+      startTransition(() => router.replace("/login"));
     }
   }, [authSessionQuery.data, authSessionQuery.isSuccess, isLoginRoute, router]);
 
@@ -246,7 +219,6 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
     if (authSessionQuery.isPending || authSessionQuery.data?.authenticated) {
       return <AuthLoadingScreen label="Checking your Clair Tax session..." />;
     }
-
     return <div className="min-h-screen">{children}</div>;
   }
 
@@ -256,11 +228,7 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
 
   if (authSessionQuery.isError) {
     return (
-      <AuthErrorScreen
-        onRetry={() => {
-          void authSessionQuery.refetch();
-        }}
-      />
+      <AuthErrorScreen onRetry={() => void authSessionQuery.refetch()} />
     );
   }
 
@@ -268,38 +236,50 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
     return <AuthLoadingScreen label="Redirecting you to sign in..." />;
   }
 
-  const sidebarYears = userYearsQuery.data?.map((userYear) => userYear.year) ?? [];
+  const sidebarYears = userYearsQuery.data?.map((y) => y.year) ?? [];
   const currentEmail = authSessionQuery.data.email ?? "Signed in";
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-50 border-b border-brand-line bg-brand-white/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-shell items-center justify-between gap-6 px-4 py-4 sm:px-6 lg:px-8">
-          <Link href="/" className="font-display text-4xl leading-none text-brand-black">
+      {/* ── Header ── */}
+      <header className="sticky top-0 z-50 border-b border-brand-blue-dark bg-brand-blue-dark">
+        <div className="mx-auto flex w-full max-w-shell items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+          <Link
+            href="/"
+            className="font-display text-2xl font-bold leading-none text-white sm:text-3xl"
+          >
             Clair Tax
           </Link>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Mobile hamburger */}
             <button
               type="button"
               onClick={() => setIsSidebarOpen(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-brand-line bg-brand-white transition hover:bg-brand-ice lg:hidden"
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-white/30 text-white transition hover:bg-white/10 lg:hidden"
               aria-label="Open menu"
             >
-              <svg className="h-5 w-5 text-brand-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
 
-            <span className="hidden text-sm font-medium text-brand-black sm:block">
+            {/* Email – desktop only */}
+            <span className="hidden text-sm text-white/80 sm:block">
               {currentEmail}
             </span>
-            <span className="app-pill-blue">Signed in</span>
+
+            {/* Signed-in badge */}
+            <span className="hidden items-center rounded-full border border-white/30 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white sm:inline-flex">
+              Signed in
+            </span>
+
+            {/* Logout */}
             <button
               type="button"
               onClick={() => logoutMutation.mutate()}
               disabled={logoutMutation.isPending}
-              className="app-button-secondary"
+              className="inline-flex items-center justify-center rounded-md border border-white/40 bg-transparent px-4 py-2 text-sm font-semibold text-white transition hover:bg-white hover:text-brand-blue-dark disabled:opacity-50"
             >
               {logoutMutation.isPending ? "Signing out..." : "Log out"}
             </button>
@@ -307,49 +287,64 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
         </div>
       </header>
 
-      <div className="mx-auto flex w-full max-w-shell flex-1 flex-col gap-6 px-4 pb-8 pt-6 sm:px-6 lg:flex-row lg:items-start lg:px-8">
+      <div className="mx-auto flex w-full max-w-shell flex-1 flex-col gap-6 px-4 pb-10 pt-6 sm:px-6 lg:flex-row lg:items-start lg:px-8">
+        {/* ── Sidebar ── */}
         <aside
           className={`
-            fixed left-0 top-0 z-40 h-full w-full max-w-sm
+            fixed left-0 top-0 z-40 h-full w-full max-w-xs
             transform transition-transform duration-300 ease-out
-            lg:sticky lg:top-24 lg:h-auto lg:w-full lg:max-w-[17.5rem] lg:transform-none lg:self-start
+            lg:sticky lg:top-[4.5rem] lg:h-auto lg:w-full lg:max-w-[16rem] lg:transform-none lg:self-start
             ${isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
           `}
         >
-          <div className="flex h-full flex-col gap-4 rounded-none border-r border-brand-line bg-brand-white p-4 shadow-2xl lg:rounded-panel lg:border lg:bg-brand-sidebar/85 lg:shadow-panel">
+          <div className="flex h-full flex-col gap-3 bg-brand-white p-4 shadow-2xl lg:rounded-panel lg:border lg:border-brand-line lg:shadow-panel">
+            {/* Close button – mobile only */}
             <button
               type="button"
               onClick={() => setIsSidebarOpen(false)}
-              className="self-end rounded-full p-2 transition hover:bg-brand-ice lg:hidden"
+              className="self-end rounded-md p-1.5 text-brand-muted transition hover:bg-brand-ice lg:hidden"
               aria-label="Close menu"
             >
-              <svg className="h-5 w-5 text-brand-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
 
-            <nav className="space-y-1.5">
-              <Link
-                href="/"
-                aria-current={isActivePath(pathname, "/") ? "page" : undefined}
-                className={[
-                  "sidebar-link",
-                  isActivePath(pathname, "/") ? "sidebar-link-active" : "",
-                ]
-                  .join(" ")
-                  .trim()}
-              >
-                <SidebarIcon icon={DashboardIcon} />
-                <span>Dashboard</span>
-              </Link>
+            {/* Primary nav */}
+            <nav className="space-y-1">
+              {(["/" , "/calculator", "/profile"] as const).map((href) => {
+                const labels: Record<string, string> = {
+                  "/": "Dashboard",
+                  "/calculator": "Calculator",
+                  "/profile": "Profile",
+                };
+                const icons: Record<string, ComponentType<IconProps>> = {
+                  "/": DashboardIcon,
+                  "/calculator": CalculatorIcon,
+                  "/profile": ProfileIcon,
+                };
+                const active = isActivePath(pathname, href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    aria-current={active ? "page" : undefined}
+                    className={["sidebar-link", active ? "sidebar-link-active" : ""].join(" ").trim()}
+                  >
+                    <SidebarIcon icon={icons[href]} active={active} />
+                    <span>{labels[href]}</span>
+                  </Link>
+                );
+              })}
             </nav>
 
             <div className="border-t border-brand-line" />
 
-            <section className="space-y-1.5">
-              <div className="flex items-center justify-between px-4 py-2">
-                <p className="text-sm font-semibold text-brand-black">Years</p>
-                <ChevronDownIcon className="h-4 w-4 text-brand-black" />
+            {/* Years section */}
+            <section className="space-y-1">
+              <div className="flex items-center justify-between px-4 py-1.5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-muted">Years</p>
+                <ChevronDownIcon className="h-4 w-4 text-brand-muted" />
               </div>
 
               <Link href="/year/create" className="sidebar-action">
@@ -357,109 +352,87 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
                 <span>Create New</span>
               </Link>
 
-              <div className="space-y-1 px-2">
+              <div className="space-y-0.5 px-1">
                 {sidebarYears.length > 0 ? (
                   sidebarYears.map((year) => {
                     const href = `/year/${year}`;
                     const active = pathname === href;
-
                     return (
                       <Link
                         key={year}
                         href={href}
                         aria-current={active ? "page" : undefined}
-                        className={[
-                          "sidebar-year-link",
-                          active ? "sidebar-year-link-active" : "",
-                        ]
-                          .join(" ")
-                          .trim()}
+                        className={["sidebar-year-link", active ? "sidebar-year-link-active" : ""].join(" ").trim()}
                       >
                         {year}
                       </Link>
                     );
                   })
                 ) : (
-                  <div className="rounded-card border border-dashed border-brand-line px-4 py-3 text-sm leading-6 text-brand-muted">
+                  <div className="rounded-card border border-dashed border-brand-line px-4 py-3 text-xs leading-5 text-brand-muted">
                     Create a year workspace to pin it here.
                   </div>
                 )}
               </div>
             </section>
 
-            <div className="border-t border-brand-line" />
-
-            <nav className="space-y-1.5">
-              <Link
-                href="/calculator"
-                aria-current={isActivePath(pathname, "/calculator") ? "page" : undefined}
-                className={[
-                  "sidebar-link",
-                  isActivePath(pathname, "/calculator") ? "sidebar-link-active" : "",
-                ]
-                  .join(" ")
-                  .trim()}
-              >
-                <SidebarIcon icon={CalculatorIcon} />
-                <span>Calculator</span>
-              </Link>
-
-              <Link
-                href="/profile"
-                aria-current={isActivePath(pathname, "/profile") ? "page" : undefined}
-                className={[
-                  "sidebar-link",
-                  isActivePath(pathname, "/profile") ? "sidebar-link-active" : "",
-                ]
-                  .join(" ")
-                  .trim()}
-              >
-                <SidebarIcon icon={ProfileIcon} />
-                <span>Profile</span>
-              </Link>
-            </nav>
-
-            <div className="mt-8 space-y-4 px-4 pb-1 pt-10">
-              <FooterTextLink href="/" label="Send feedback" />
-              <FooterTextLink href="/" label="Privacy policy" />
-              <FooterTextLink href="/" label="Terms of Service" />
+            {/* Footer links */}
+            <div className="mt-auto border-t border-brand-line pt-3">
+              <div className="flex flex-col gap-1.5 px-4">
+                {[
+                  { href: "/", label: "Send feedback" },
+                  { href: "/", label: "Privacy policy" },
+                  { href: "/", label: "Terms of Service" },
+                ].map(({ href, label }) => (
+                  <Link
+                    key={label}
+                    href={href}
+                    className="text-xs text-brand-muted transition hover:text-brand-blue"
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
         </aside>
 
+        {/* ── Main content ── */}
         <main className="min-w-0 flex-1">
           <div className="mx-auto w-full max-w-content xl:max-w-none">{children}</div>
         </main>
 
+        {/* Mobile overlay */}
         {isSidebarOpen ? (
           <div
-            className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm transition-opacity lg:hidden"
+            className="fixed inset-0 z-30 bg-brand-black/50 lg:hidden"
             onClick={() => setIsSidebarOpen(false)}
             aria-hidden="true"
           />
         ) : null}
       </div>
 
-      <footer className="border-t border-brand-line bg-brand-white">
-        <div className="mx-auto flex w-full max-w-shell flex-col gap-3 px-4 py-5 text-sm text-brand-muted sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <p>Clair Tax keeps tax work simple, clean, and easy to review.</p>
+      {/* ── Footer ── */}
+      <footer className="border-t border-brand-blue-dark bg-brand-blue-dark">
+        <div className="mx-auto flex w-full max-w-shell flex-col gap-3 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+          <p className="text-sm text-white/70">
+            Clair Tax keeps tax work simple, clean, and easy to review.
+          </p>
           <div className="flex flex-wrap items-center gap-4">
-            <span>© {currentYear} Clair Tax</span>
-            <Link href="/" className="font-medium text-brand-black transition hover:text-brand-blue">
-              Dashboard
-            </Link>
-            <Link
-              href="/calculator"
-              className="font-medium text-brand-black transition hover:text-brand-blue"
-            >
-              Calculator
-            </Link>
-            <Link
-              href="/profile"
-              className="font-medium text-brand-black transition hover:text-brand-blue"
-            >
-              Profile
-            </Link>
+            <span className="text-sm text-white/60">© {currentYear} Clair Tax</span>
+            {[
+              { href: "/", label: "Dashboard" },
+              { href: "/calculator", label: "Calculator" },
+              { href: "/profile", label: "Profile" },
+            ].map(({ href, label }) => (
+              <Link
+                key={label}
+                href={href}
+                className="text-sm font-medium text-white transition hover:text-white/70"
+              >
+                {label}
+              </Link>
+            ))}
           </div>
         </div>
       </footer>

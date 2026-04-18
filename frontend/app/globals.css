@@ -5,17 +5,18 @@
 :root {
   color-scheme: light;
   --brand-white: 255 255 255;
-  --brand-black: 0 0 0;
-  --brand-blue: 94 155 255;
-  --brand-ice: 245 249 255;
-  --brand-sidebar: 239 245 255;
-  --brand-line: 214 224 241;
-  --brand-line-strong: 161 179 209;
-  --brand-muted: 79 88 102;
-  --radius-shell: 1.75rem;
-  --radius-panel: 1.5rem;
-  --radius-card: 1.25rem;
-  --radius-field: 1rem;
+  --brand-black: 15 23 42;            /* #0F172A – dark navy for body text */
+  --brand-blue: 37 99 235;            /* #2563EB – primary brand blue */
+  --brand-blue-dark: 30 64 175;       /* #1E40AF – header / pressed state */
+  --brand-ice: 239 246 255;           /* #EFF6FF – light blue surface */
+  --brand-sidebar: 248 250 255;       /* #F8FAFF – sidebar background tint */
+  --brand-line: 191 219 254;          /* #BFDBFE – blue-tinted border */
+  --brand-line-strong: 147 197 253;   /* #93C5FD – stronger border */
+  --brand-muted: 100 116 139;         /* #64748B – secondary text */
+  --radius-shell: 1.5rem;
+  --radius-panel: 1rem;
+  --radius-card: 0.75rem;
+  --radius-field: 0.5rem;
 }
 
 @layer base {
@@ -29,9 +30,6 @@
 
   body {
     @apply min-h-screen bg-brand-white font-sans text-brand-black antialiased;
-    background-image:
-      radial-gradient(circle at top left, rgba(94, 155, 255, 0.14), transparent 22rem),
-      linear-gradient(180deg, rgba(94, 155, 255, 0.08) 0%, rgba(255, 255, 255, 0) 16rem);
   }
 
   h1,
@@ -40,7 +38,7 @@
   h4,
   h5,
   h6 {
-    @apply font-display font-semibold tracking-[-0.04em];
+    @apply font-display font-semibold tracking-tight;
   }
 
   a {
@@ -55,12 +53,13 @@
   }
 
   ::selection {
-    background: rgba(94, 155, 255, 0.26);
-    color: #000000;
+    background: rgba(37, 99, 235, 0.2);
+    color: #0f172a;
   }
 }
 
 @layer components {
+  /* ── Panels ── */
   .app-panel {
     @apply rounded-panel border border-brand-line bg-brand-white shadow-panel;
   }
@@ -70,19 +69,24 @@
   }
 
   .app-panel-strong {
-    @apply rounded-panel border border-brand-black bg-brand-black text-brand-white shadow-accent;
+    @apply rounded-panel border border-brand-blue-dark bg-brand-blue-dark text-brand-white shadow-accent;
   }
 
+  .app-panel-strong .app-eyebrow {
+    @apply text-white/60;
+  }
+
+  /* ── Typography ── */
   .app-eyebrow {
     @apply text-[11px] font-semibold uppercase tracking-[0.28em] text-brand-blue;
   }
 
   .app-pill {
-    @apply inline-flex items-center rounded-full border border-brand-line-strong bg-brand-white px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-black;
+    @apply inline-flex items-center rounded-full border border-brand-line-strong bg-brand-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-black;
   }
 
   .app-pill-blue {
-    @apply inline-flex items-center rounded-full border border-brand-blue bg-brand-blue px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-white;
+    @apply inline-flex items-center rounded-full border border-brand-blue bg-brand-blue px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-white;
   }
 
   .app-label {
@@ -90,60 +94,59 @@
   }
 
   .app-input {
-    @apply mt-2 w-full rounded-field border border-brand-line-strong bg-brand-white px-4 py-3 text-base text-brand-black outline-none transition placeholder:text-brand-muted/70 focus:border-brand-blue focus:ring-4 focus:ring-brand-blue/15;
+    @apply mt-1.5 w-full rounded-field border border-brand-line-strong bg-brand-white px-3.5 py-2.5 text-sm text-brand-black outline-none transition placeholder:text-brand-muted/60 focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20;
   }
 
   .app-help {
-    @apply mt-2 text-xs leading-6 text-brand-muted;
+    @apply mt-1.5 text-xs leading-5 text-brand-muted;
   }
 
+  /* ── Buttons ── */
   .app-button-primary {
-    @apply inline-flex items-center justify-center rounded-full border border-brand-black bg-brand-black px-5 py-3 text-sm font-semibold text-brand-white transition hover:border-brand-blue hover:bg-brand-blue hover:text-brand-black focus:outline-none focus:ring-4 focus:ring-brand-blue/15 disabled:cursor-not-allowed disabled:border-brand-line-strong disabled:bg-brand-line disabled:text-brand-muted;
+    @apply inline-flex items-center justify-center rounded-md border border-brand-blue bg-brand-blue px-5 py-2.5 text-sm font-semibold text-brand-white transition hover:bg-brand-blue-dark hover:border-brand-blue-dark focus:outline-none focus:ring-2 focus:ring-brand-blue/30 disabled:cursor-not-allowed disabled:border-brand-line disabled:bg-brand-ice disabled:text-brand-muted;
   }
 
   .app-button-secondary {
-    @apply inline-flex items-center justify-center rounded-full border border-brand-black bg-brand-white px-5 py-3 text-sm font-semibold text-brand-black transition hover:border-brand-blue hover:bg-brand-blue/10 focus:outline-none focus:ring-4 focus:ring-brand-blue/15;
+    @apply inline-flex items-center justify-center rounded-md border border-brand-line-strong bg-brand-white px-5 py-2.5 text-sm font-semibold text-brand-blue transition hover:border-brand-blue hover:bg-brand-ice focus:outline-none focus:ring-2 focus:ring-brand-blue/20;
   }
 
+  /* ── Sidebar ── */
   .sidebar-link {
-    @apply flex items-center gap-3 rounded-full border border-transparent px-4 py-3 text-sm font-medium text-brand-black transition hover:bg-brand-white hover:shadow-inner;
+    @apply flex items-center gap-3 rounded-card px-4 py-2.5 text-sm font-medium text-brand-black transition hover:bg-brand-ice hover:text-brand-blue;
   }
 
   .sidebar-link-active {
-    @apply border-brand-line-strong bg-brand-blue/20 shadow-inner;
+    @apply bg-brand-blue text-brand-white hover:bg-brand-blue-dark hover:text-brand-white;
   }
 
   .sidebar-action {
-    @apply flex items-center gap-3 rounded-card border border-transparent px-4 py-3 text-sm font-medium text-brand-black transition hover:bg-brand-white;
+    @apply flex items-center gap-3 rounded-card px-4 py-2.5 text-sm font-medium text-brand-black transition hover:bg-brand-ice hover:text-brand-blue;
   }
 
   .sidebar-year-link {
-    @apply block rounded-card border border-transparent px-4 py-2.5 text-sm font-medium text-brand-black transition hover:bg-brand-white;
+    @apply block rounded-card px-4 py-2 text-sm font-medium text-brand-black transition hover:bg-brand-ice hover:text-brand-blue;
   }
 
   .sidebar-year-link-active {
-    @apply border-brand-line-strong bg-brand-white shadow-inner;
+    @apply bg-brand-blue text-brand-white hover:bg-brand-blue-dark hover:text-brand-white;
   }
 
+  /* ── Metric cards ── */
   .metric-card {
     @apply rounded-card border border-brand-line bg-brand-white p-6 shadow-panel;
   }
 
   .metric-card-accent {
-    @apply rounded-card border border-brand-blue bg-brand-ice p-6 shadow-accent;
+    @apply rounded-card border border-brand-blue-dark bg-brand-blue p-6 text-brand-white shadow-accent;
   }
 
+  /* ── Progress ── */
   .progress-track {
-    @apply h-5 rounded-full border border-brand-line-strong bg-brand-white p-1;
+    @apply h-2.5 w-full overflow-hidden rounded-full border border-brand-line bg-brand-ice;
   }
 
   .progress-bar {
-    @apply h-full rounded-full;
-    background-image: linear-gradient(
-      90deg,
-      rgba(94, 155, 255, 0.95) 0%,
-      rgba(94, 155, 255, 0.58) 100%
-    );
+    @apply h-full rounded-full bg-brand-blue;
   }
 
   .data-tile {
@@ -151,16 +154,11 @@
   }
 
   .year-claim-track {
-    @apply mt-5 h-4 overflow-hidden rounded-full border border-brand-line bg-brand-ice;
+    @apply mt-4 h-2 overflow-hidden rounded-full bg-brand-ice;
   }
 
   .year-claim-fill {
-    @apply h-full rounded-full;
-    background-image: linear-gradient(
-      90deg,
-      rgba(0, 0, 0, 0.9) 0%,
-      rgba(94, 155, 255, 0.92) 100%
-    );
+    @apply h-full rounded-full bg-brand-blue;
   }
 }
 

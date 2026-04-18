@@ -11,6 +11,7 @@ import com.clairtax.backend.receipt.dto.ConfirmReceiptReviewRequest;
 import com.clairtax.backend.receipt.dto.ConfirmReceiptUploadRequest;
 import com.clairtax.backend.receipt.dto.CreateReceiptRequest;
 import com.clairtax.backend.receipt.dto.CreateReceiptUploadIntentRequest;
+import com.clairtax.backend.receipt.dto.DirectReceiptUploadRequest;
 import com.clairtax.backend.receipt.dto.ReceiptLatestExtractionResponse;
 import com.clairtax.backend.receipt.dto.ReceiptResponse;
 import com.clairtax.backend.receipt.dto.ReceiptUploadIntentResponse;
@@ -47,6 +48,7 @@ import com.clairtax.backend.useryear.repository.UserPolicyYearRepository;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -172,6 +174,69 @@ public class ReceiptService {
         Receipt createdReceipt = receiptRepository.save(receipt);
         syncClaim(userPolicyYear.getId(), reliefCategory);
         return toResponse(createdReceipt);
+    }
+
+    public ReceiptResponse uploadReceipt(Integer year, DirectReceiptUploadRequest fields, MultipartFile file) {
+        String mimeType = file.getContentType() != null ? file.getContentType().toLowerCase() : "";
+        if (!mimeType.equals("application/pdf") && !mimeType.equals("image/png") && !mimeType.equals("image/jpeg")) {
+            throw new CalculatorValidationException("Only PDF, PNG, and JPG files are accepted.");
+        }
+        if (file.getSize() > 10L * 1024L * 1024L) {
+            throw new CalculatorValidationException("File is too large. Please upload a file smaller than 10MB.");
+        }
+
+        AppUser currentUser = getCurrentUserEntity();
+        UserPolicyYear userPolicyYear = findExistingUserPolicyYear(year);
+        ReliefCategory reliefCategory = resolveReliefCategory(
+                fields.reliefCategoryId(),
+                userPolicyYear.getPolicyYear(),
+                currentUser
+        );
+
+        String sanitizedFileName = sanitizeFileName(
+                normalizeRequiredString(file.getOriginalFilename(), "receipt")
+        );
+        String objectKey = "receipts-%d-%s-%s-%s".formatted(
+                year,
+                currentUser.getId(),
+                UUID.randomUUID(),
+                sanitizedFileName
+        );
+
+        try {
+            receiptObjectStorageService.storeUploadedObject(objectKey, file.getInputStream());
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to upload receipt file to storage", exception);
+        }
+
+        Receipt receipt = new Receipt(
+                userPolicyYear,
+                reliefCategory,
+                normalizeOptionalString(fields.notes()),
+                sanitizedFileName,
+                "pending",
+                properties.getBucketName(),
+                objectKey,
+                mimeType,
+                file.getSize(),
+                UUID.randomUUID().toString().replace("-", ""),
+                ReceiptStatus.VERIFIED,
+                OffsetDateTime.now()
+        );
+        receipt.confirmReview(
+                userPolicyYear,
+                reliefCategory,
+                fields.merchantName().trim(),
+                fields.receiptDate(),
+                fields.amount(),
+                "MYR",
+                normalizeOptionalString(fields.notes())
+        );
+
+        Receipt saved = receiptRepository.save(receipt);
+        saved.assignFileUrl(buildStoredFileUrl(saved.getId()));
+        syncClaim(userPolicyYear.getId(), reliefCategory);
+        return toResponse(saved);
     }
 
     public ReceiptResponse updateReceipt(UUID id, UpdateReceiptRequest request) {

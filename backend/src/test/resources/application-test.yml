@@ -16,7 +16,7 @@ spring:
   mail:
     host: localhost
     port: 25
-    username: test@clairtax.local
+    username: clairtax.notification@gmail.com
     password: test-password
 
 clair:

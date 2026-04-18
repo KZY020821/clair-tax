@@ -12,6 +12,7 @@ const config: Config = {
           white: "rgb(var(--brand-white) / <alpha-value>)",
           black: "rgb(var(--brand-black) / <alpha-value>)",
           blue: "rgb(var(--brand-blue) / <alpha-value>)",
+          "blue-dark": "rgb(var(--brand-blue-dark) / <alpha-value>)",
           ice: "rgb(var(--brand-ice) / <alpha-value>)",
           sidebar: "rgb(var(--brand-sidebar) / <alpha-value>)",
           line: "rgb(var(--brand-line) / <alpha-value>)",
@@ -30,9 +31,9 @@ const config: Config = {
         field: "var(--radius-field)",
       },
       boxShadow: {
-        panel: "0 18px 40px rgba(0, 0, 0, 0.05)",
-        accent: "0 18px 34px rgba(94, 155, 255, 0.16)",
-        inner: "inset 0 1px 0 rgba(255, 255, 255, 0.8)",
+        panel: "0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(37,99,235,0.06)",
+        accent: "0 4px 20px rgba(37,99,235,0.18)",
+        inner: "inset 0 1px 3px rgba(0,0,0,0.08)",
       },
       maxWidth: {
         shell: "92rem",

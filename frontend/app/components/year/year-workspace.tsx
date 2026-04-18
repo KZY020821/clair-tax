@@ -7,10 +7,8 @@ import { formatCurrency } from "../../lib/format-currency";
 import { fetchProfile } from "../../lib/profile";
 import { buildProfileFactList } from "../../lib/profile-relief-visibility";
 import {
-  confirmReceiptReview,
   deleteReceipt,
   fetchReceiptsForUserYear,
-  rejectReceiptReview,
   resolveReceiptFileUrl,
   updateReceipt,
   uploadReceiptForUserYear,
@@ -30,8 +28,18 @@ type Notification = {
 
 type UploadFormState = {
   reliefCategoryId: string;
+  merchantName: string;
+  receiptDate: string;
+  amount: string;
   notes: string;
   file: File | null;
+};
+
+type UploadFormErrors = {
+  merchantName?: string;
+  receiptDate?: string;
+  amount?: string;
+  file?: string;
 };
 
 type EditFormState = {
@@ -62,6 +70,9 @@ function buildEmptyUploadForm(
 ): UploadFormState {
   return {
     reliefCategoryId: categories?.[0]?.reliefCategoryId ?? "",
+    merchantName: "",
+    receiptDate: "",
+    amount: "",
     notes: "",
     file: null,
   };
@@ -210,12 +221,16 @@ export default function YearWorkspace({
   const notificationCounterRef = useRef(0);
   const [uploadForm, setUploadForm] = useState<UploadFormState>({
     reliefCategoryId: "",
+    merchantName: "",
+    receiptDate: "",
+    amount: "",
     notes: "",
     file: null,
   });
   const [editingReceipt, setEditingReceipt] = useState<Receipt | null>(null);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [uploadFormErrors, setUploadFormErrors] = useState<UploadFormErrors>({});
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const uploadSectionRef = useRef<HTMLElement>(null);
 
@@ -240,27 +255,27 @@ export default function YearWorkspace({
         workspaceQuery.data?.categories[0]?.reliefCategoryId ||
         "";
 
-      if (reliefCategoryId === "" || uploadForm.file === null) {
-        throw new Error("Choose a category and attach a receipt file before uploading.");
+      const allowedTypes = ["application/pdf", "image/png", "image/jpeg"];
+      if (!uploadForm.file || !allowedTypes.includes(uploadForm.file.type)) {
+        throw new Error("Only PDF, PNG, and JPG files are accepted.");
       }
-
-      // Validate file size (10MB limit)
-      const maxFileSizeBytes = 10 * 1024 * 1024; // 10MB
-      if (uploadForm.file.size > maxFileSizeBytes) {
-        throw new Error(
-          `File size is too large (${(uploadForm.file.size / 1024 / 1024).toFixed(1)}MB). Please upload a file smaller than 10MB.`
-        );
+      if (uploadForm.file.size > 10 * 1024 * 1024) {
+        throw new Error(`File is too large (${(uploadForm.file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 10MB.`);
       }
 
       return uploadReceiptForUserYear(year, {
-        reliefCategoryId,
+        merchantName: uploadForm.merchantName.trim(),
+        receiptDate: uploadForm.receiptDate.trim(),
+        amount: uploadForm.amount.trim(),
+        reliefCategoryId: reliefCategoryId || null,
         notes: normalizeOptionalString(uploadForm.notes),
         file: uploadForm.file,
       });
     },
     onSuccess: async () => {
       setUploadForm(buildEmptyUploadForm(workspaceQuery.data?.categories));
-      showNotification("Receipt uploaded. Extraction is now processing.");
+      setUploadFormErrors({});
+      showNotification("Receipt saved successfully.");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["user-year-workspace", year] }),
         queryClient.invalidateQueries({ queryKey: ["user-year-receipts", year] }),
@@ -304,28 +319,6 @@ export default function YearWorkspace({
     },
   });
 
-  const confirmReviewMutation = useMutation({
-    mutationFn: (receiptId: string) => confirmReceiptReview(receiptId),
-    onSuccess: async () => {
-      showNotification("Receipt confirmed and counted toward this year.");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["user-year-workspace", year] }),
-        queryClient.invalidateQueries({ queryKey: ["user-year-receipts", year] }),
-      ]);
-    },
-  });
-
-  const rejectReviewMutation = useMutation({
-    mutationFn: (receiptId: string) => rejectReceiptReview(receiptId),
-    onSuccess: async () => {
-      showNotification("Receipt extraction was rejected.", "info");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["user-year-workspace", year] }),
-        queryClient.invalidateQueries({ queryKey: ["user-year-receipts", year] }),
-      ]);
-    },
-  });
-
   const workspace = workspaceQuery.data;
   const receipts = receiptsQuery.data ?? [];
   const categories = workspace?.categories ?? [];
@@ -359,8 +352,31 @@ export default function YearWorkspace({
     setNotifications((current) => current.filter((n) => n.id !== id));
   }
 
+  function validateUploadForm(): UploadFormErrors {
+    const errors: UploadFormErrors = {};
+    if (!uploadForm.merchantName.trim()) {
+      errors.merchantName = "Merchant name is required.";
+    }
+    if (!uploadForm.receiptDate.trim()) {
+      errors.receiptDate = "Receipt date is required.";
+    }
+    if (!uploadForm.amount.trim() || Number(uploadForm.amount) <= 0) {
+      errors.amount = "Amount must be greater than zero.";
+    }
+    if (!uploadForm.file) {
+      errors.file = "Please attach a receipt file.";
+    }
+    return errors;
+  }
+
   function handleUploadSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const errors = validateUploadForm();
+    if (Object.keys(errors).length > 0) {
+      setUploadFormErrors(errors);
+      return;
+    }
+    setUploadFormErrors({});
     uploadMutation.mutate();
   }
 
@@ -519,7 +535,6 @@ export default function YearWorkspace({
           label="Total claimed"
           value={formatCurrency(workspace.totalClaimedAmount)}
           detail="The sum of receipt-backed and saved-profile relief amounts already visible for this year."
-          accent
         />
         <SummaryCard
           label="Receipts on file"
@@ -601,35 +616,98 @@ export default function YearWorkspace({
           <p className="app-eyebrow">Upload Receipt</p>
           <h2 className="mt-3 text-3xl text-brand-black">Add another receipt</h2>
           <p className="mt-3 text-sm leading-7 text-brand-muted">
-            Select a category, attach the file, and let the extraction worker
-            produce the candidate amount and date for review.
+            Fill in all required fields, attach the receipt file, and submit. The receipt is saved immediately.
           </p>
 
-          <form className="mt-6 space-y-5" onSubmit={handleUploadSubmit}>
-            <div className="grid gap-5 md:grid-cols-1">
-              <label className="block">
-                <span className="app-label">Relief category</span>
-                <select
-                  className="app-input"
-                  value={uploadForm.reliefCategoryId || categories[0]?.reliefCategoryId || ""}
+          <form name="upload-receipt" className="mt-6 space-y-5" onSubmit={handleUploadSubmit}>
+            <label className="block">
+              <span className="app-label">Relief category</span>
+              <select
+                className="app-input"
+                value={uploadForm.reliefCategoryId || categories[0]?.reliefCategoryId || ""}
+                onChange={(event) => {
+                  setUploadForm((current) => ({
+                    ...current,
+                    reliefCategoryId: event.target.value,
+                  }));
+                }}
+              >
+                {categories.map((category) => (
+                  <option
+                    key={category.reliefCategoryId}
+                    value={category.reliefCategoryId}
+                  >
+                    {category.name}
+                    {category.requiresReceipt ? " · receipt needed" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="block">
+                <label className="app-label">
+                  Merchant name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  className={`app-input ${uploadFormErrors.merchantName ? "border-red-400 focus:border-red-400 focus:ring-red-400/20" : ""}`}
+                  placeholder="e.g. Caring Pharmacy"
+                  value={uploadForm.merchantName}
                   onChange={(event) => {
-                    setUploadForm((current) => ({
-                      ...current,
-                      reliefCategoryId: event.target.value,
-                    }));
+                    setUploadForm((current) => ({ ...current, merchantName: event.target.value }));
+                    if (event.target.value.trim()) {
+                      setUploadFormErrors((e) => ({ ...e, merchantName: undefined }));
+                    }
                   }}
-                >
-                  {categories.map((category) => (
-                    <option
-                      key={category.reliefCategoryId}
-                      value={category.reliefCategoryId}
-                    >
-                      {category.name}
-                      {category.requiresReceipt ? " · receipt needed" : ""}
-                    </option>
-                  ))}
-                </select>
+                />
+                {uploadFormErrors.merchantName ? (
+                  <p className="mt-1.5 text-xs text-red-600">{uploadFormErrors.merchantName}</p>
+                ) : null}
+              </div>
+
+              <div className="block">
+                <label className="app-label">
+                  Receipt date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  className={`app-input ${uploadFormErrors.receiptDate ? "border-red-400 focus:border-red-400 focus:ring-red-400/20" : ""}`}
+                  value={uploadForm.receiptDate}
+                  onChange={(event) => {
+                    setUploadForm((current) => ({ ...current, receiptDate: event.target.value }));
+                    if (event.target.value.trim()) {
+                      setUploadFormErrors((e) => ({ ...e, receiptDate: undefined }));
+                    }
+                  }}
+                />
+                {uploadFormErrors.receiptDate ? (
+                  <p className="mt-1.5 text-xs text-red-600">{uploadFormErrors.receiptDate}</p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="block">
+              <label className="app-label">
+                Amount (RM) <span className="text-red-500">*</span>
               </label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                className={`app-input ${uploadFormErrors.amount ? "border-red-400 focus:border-red-400 focus:ring-red-400/20" : ""}`}
+                placeholder="0.00"
+                value={uploadForm.amount}
+                onChange={(event) => {
+                  setUploadForm((current) => ({ ...current, amount: event.target.value }));
+                  if (Number(event.target.value) > 0) {
+                    setUploadFormErrors((e) => ({ ...e, amount: undefined }));
+                  }
+                }}
+              />
+              {uploadFormErrors.amount ? (
+                <p className="mt-1.5 text-xs text-red-600">{uploadFormErrors.amount}</p>
+              ) : null}
             </div>
 
             <label className="block">
@@ -640,43 +718,44 @@ export default function YearWorkspace({
                 name="notes"
                 value={uploadForm.notes}
                 onChange={(event) => {
-                  setUploadForm((current) => ({
-                    ...current,
-                    notes: event.target.value,
-                  }));
+                  setUploadForm((current) => ({ ...current, notes: event.target.value }));
                 }}
               />
             </label>
 
-            <label className="block">
-              <span className="app-label">Receipt file</span>
+            <div className="block">
+              <label className="app-label">
+                Receipt file <span className="text-red-500">*</span>
+              </label>
               <input
                 type="file"
-                className="app-input file:mr-4 file:rounded-full file:border-0 file:bg-brand-black file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand-white"
+                accept="application/pdf,image/png,image/jpeg"
+                className={`app-input file:mr-4 file:rounded-full file:border-0 file:bg-brand-black file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand-white ${uploadFormErrors.file ? "border-red-400 focus:border-red-400 focus:ring-red-400/20" : ""}`}
                 onChange={(event) => {
-                  setUploadForm((current) => ({
-                    ...current,
-                    file: event.target.files?.[0] ?? null,
-                  }));
+                  const file = event.target.files?.[0] ?? null;
+                  setUploadForm((current) => ({ ...current, file }));
+                  if (file) {
+                    setUploadFormErrors((e) => ({ ...e, file: undefined }));
+                  }
                 }}
               />
-              <p className="app-help">
-                Maximum file size: 10MB. The file uploads to object storage first,
-                then enters the extraction queue for review.
-              </p>
+              <p className="app-help">Accepted formats: PDF, PNG, JPG · Maximum size: 10MB</p>
+              {uploadFormErrors.file ? (
+                <p className="mt-1.5 text-xs text-red-600">{uploadFormErrors.file}</p>
+              ) : null}
               {uploadForm.file ? (
-                <div className="mt-2">
+                <div className="mt-2 space-y-1">
                   <p className="text-sm text-brand-muted">
                     Selected: {uploadForm.file.name} ({(uploadForm.file.size / 1024 / 1024).toFixed(2)}MB)
                   </p>
-                  {uploadForm.file.size > 10 * 1024 * 1024 ? (
-                    <p className="mt-1 text-sm text-red-600">
-                      Warning: File size exceeds 10MB limit. Please select a smaller file.
-                    </p>
+                  {!["application/pdf", "image/png", "image/jpeg"].includes(uploadForm.file.type) ? (
+                    <p className="text-xs text-red-600">Unsupported file type. Please choose a PDF, PNG, or JPG file.</p>
+                  ) : uploadForm.file.size > 10 * 1024 * 1024 ? (
+                    <p className="text-xs text-red-600">File exceeds the 10MB limit. Please choose a smaller file.</p>
                   ) : null}
                 </div>
               ) : null}
-            </label>
+            </div>
 
             {activeUploadCategory ? (
               <div className="rounded-card border border-brand-line bg-brand-ice px-5 py-5">
@@ -823,32 +902,6 @@ export default function YearWorkspace({
                       </div>
 
                       <div className="flex flex-wrap gap-3">
-                        {receipt.status === "processed" ? (
-                          <>
-                            <button
-                              type="button"
-                              className="app-button-primary"
-                              onClick={() => {
-                                confirmReviewMutation.mutate(receipt.id);
-                              }}
-                              disabled={confirmReviewMutation.isPending}
-                            >
-                              {confirmReviewMutation.isPending
-                                ? "Confirming..."
-                                : "Confirm extraction"}
-                            </button>
-                            <button
-                              type="button"
-                              className="app-button-secondary"
-                              onClick={() => {
-                                rejectReviewMutation.mutate(receipt.id);
-                              }}
-                              disabled={rejectReviewMutation.isPending}
-                            >
-                              Reject
-                            </button>
-                          </>
-                        ) : null}
                         <button
                           type="button"
                           className="app-button-secondary"
