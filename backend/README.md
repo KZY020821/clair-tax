@@ -31,6 +31,12 @@ Minimal Spring Boot scaffold for the Clair Tax API.
    - `SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/clair_tax`
    - `SPRING_DATASOURCE_USERNAME=postgres`
    - `SPRING_DATASOURCE_PASSWORD=postgres`
+   - Optional for phone-friendly auth links during local mobile testing:
+     - `CLAIR_AUTH_PUBLIC_BASE_URL=http://<your-laptop-ip>:8080`
+     - `CLAIR_AUTH_MOBILE_APP_SCHEME=clair-tax`
+   - Optional for real magic-link email delivery:
+     - `SPRING_MAIL_USERNAME=your-smtp-username`
+     - `SPRING_MAIL_PASSWORD=your-smtp-password-or-app-password`
 3. Run the backend with a non-`local` profile so Flyway executes on startup:
    `SPRING_PROFILES_ACTIVE=postgres ./mvnw spring-boot:run`
 
@@ -40,8 +46,11 @@ The second migration seeds demo rows, including `policy_year` records that back 
 ## Demo endpoint
 
 - `POST /api/auth/magic-link/request`
+- `POST /api/auth/otp/request`
+- `POST /api/auth/otp/verify`
 - `GET /api/auth/session`
 - `GET /api/auth/magic-link/verify?token=...`
+- `GET /api/auth/mobile-link?token=...`
 - `POST /api/auth/logout`
 - `GET /api/policy-years`
 - `GET /api/policies/{year}`
@@ -70,7 +79,10 @@ These endpoints are available when the backend is started with a database-backed
 The backend now supports two localhost-oriented auth paths:
 
 - Web localhost auth can use magic-link sessions through `/api/auth/magic-link/request`, `/api/auth/session`, `/api/auth/magic-link/verify`, and `/api/auth/logout`.
+- Mobile localhost auth should prefer the email OTP flow through `/api/auth/otp/request` and `/api/auth/otp/verify`.
+- Mobile magic-link emails now open a non-consuming `/api/auth/mobile-link` bridge page that hands off to `clair-tax://auth/verify?...` before the app calls `/api/auth/magic-link/verify`.
 - `/api/dev/me` still exists for local mobile fallback flows, debug visibility, and destructive-reset scenarios where the temporary local account is still in use.
+- If SMTP credentials are not configured on localhost or a private-network dev host, the magic-link request returns a local debug verify URL instead of failing with a `500`, and OTP requests can return a debug code for in-app testing.
 
 ## Temporary local account fallback
 

@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { requestMagicLink } from "../../lib/auth";
+import { requestMagicLink, type MagicLinkRequestResult } from "../../lib/auth";
 
 const MAGIC_LINK_STATUS_MESSAGES: Record<string, string> = {
   invalid: "That sign-in link is no longer valid. Request a new one to continue.",
@@ -16,6 +16,7 @@ export default function LoginScreen() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
+  const [debugVerifyUrl, setDebugVerifyUrl] = useState<string | null>(null);
 
   const magicLinkStatus = searchParams.get("magicLink");
   const magicLinkMessage = magicLinkStatus
@@ -37,8 +38,9 @@ export default function LoginScreen() {
     }
 
     requestMagicLinkMutation.mutate(normalizedEmail, {
-      onSuccess: () => {
+      onSuccess: (result: MagicLinkRequestResult) => {
         setSubmittedEmail(normalizedEmail);
+        setDebugVerifyUrl(result.debugVerifyUrl ?? null);
       },
     });
   };
@@ -122,12 +124,30 @@ export default function LoginScreen() {
                     Open the link from your email. The new tab should land directly on the
                     dashboard, and this tab will try to catch up without a manual refresh.
                   </p>
+                  {debugVerifyUrl ? (
+                    <div className="mt-4 rounded-card border border-brand-line-strong bg-brand-white px-4 py-4">
+                      <p className="text-sm font-semibold text-brand-black">
+                        Local email delivery is unavailable right now.
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-brand-muted">
+                        Use this one-time debug link to keep testing locally while the SMTP
+                        credentials are fixed.
+                      </p>
+                      <a
+                        href={debugVerifyUrl}
+                        className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-brand-black px-4 text-sm font-semibold text-brand-black transition hover:border-brand-blue hover:text-brand-blue"
+                      >
+                        Open debug sign-in link
+                      </a>
+                    </div>
+                  ) : null}
                 </div>
 
                 <button
                   type="button"
                   onClick={() => {
                     setSubmittedEmail(null);
+                    setDebugVerifyUrl(null);
                     requestMagicLinkMutation.reset();
                   }}
                   className="app-button-secondary"

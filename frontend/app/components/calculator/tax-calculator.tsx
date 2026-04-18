@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
 import CalculationResult from "./calculation-result";
@@ -440,7 +441,15 @@ function CategoryField({
 }
 
 export default function TaxCalculator() {
-  const [selectedYear, setSelectedYear] = useState(DEFAULT_POLICY_YEAR);
+  const searchParams = useSearchParams();
+  const prefillYear = Number(searchParams.get("year") ?? "");
+  const prefillCategoryId = searchParams.get("prefillCategory");
+  const prefillAmount = Number(searchParams.get("prefillAmount") ?? "");
+  const defaultSelectedYear =
+    Number.isInteger(prefillYear) && prefillYear > 0
+      ? prefillYear
+      : DEFAULT_POLICY_YEAR;
+  const [manualSelectedYear, setManualSelectedYear] = useState<number | null>(null);
   const [grossIncome, setGrossIncome] = useState("");
   const [zakat, setZakat] = useState("");
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -451,6 +460,7 @@ export default function TaxCalculator() {
   const [countValues, setCountValues] = useState<Record<string, string>>({});
   const [selectedValues, setSelectedValues] = useState<Record<string, boolean>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const selectedYear = manualSelectedYear ?? defaultSelectedYear;
 
   const policyYearsQuery = useQuery({
     queryKey: ["policy-years"],
@@ -482,6 +492,24 @@ export default function TaxCalculator() {
   const visibleProfileCategories = savedProfile
     ? categories.filter((category) => isCategoryVisibleForProfile(category, savedProfile))
     : [];
+  const prefilledCategory =
+    prefillCategoryId && Number.isFinite(prefillAmount) && prefillAmount > 0
+      ? visibleProfileCategories.find((category) => category.id === prefillCategoryId)
+      : undefined;
+  const effectiveAmountValues =
+    prefilledCategory?.inputType === "amount"
+      ? {
+          [prefilledCategory.id]: prefillAmount.toFixed(2),
+          ...amountValues,
+        }
+      : amountValues;
+  const effectiveSelectedValues =
+    prefilledCategory?.inputType === "fixed"
+      ? {
+          [prefilledCategory.id]: true,
+          ...selectedValues,
+        }
+      : selectedValues;
   const profileDrivenCodes = new Set(
     savedProfile
       ? visibleProfileCategories
@@ -501,7 +529,7 @@ export default function TaxCalculator() {
 
     if (
       category.inputType === "fixed" &&
-      selectedValues[category.id]
+      effectiveSelectedValues[category.id]
     ) {
       activeCodes.add(category.code);
       continue;
@@ -509,7 +537,7 @@ export default function TaxCalculator() {
 
     if (
       category.inputType === "amount" &&
-      (parseAmount(amountValues[category.id] ?? "") ?? 0) > 0
+      (parseAmount(effectiveAmountValues[category.id] ?? "") ?? 0) > 0
     ) {
       activeCodes.add(category.code);
       continue;
@@ -528,12 +556,13 @@ export default function TaxCalculator() {
       category.requiresCategoryCode === null ||
       activeCodes.has(category.requiresCategoryCode),
   );
+  const defaultOpenSection = prefilledCategory?.section;
 
   const categoryValidationMessages: Record<string, string | null> = {};
   for (const category of visibleCategories) {
     if (category.inputType === "amount") {
       categoryValidationMessages[category.id] = getMoneyFieldError(
-        amountValues[category.id] ?? "",
+        effectiveAmountValues[category.id] ?? "",
         category.maxAmount,
       );
       continue;
@@ -563,7 +592,7 @@ export default function TaxCalculator() {
       return;
     }
 
-    setSelectedYear(nextYear);
+    setManualSelectedYear(nextYear);
     setAmountValues({});
     setCountValues({});
     setSelectedValues({});
@@ -623,7 +652,7 @@ export default function TaxCalculator() {
       }
 
       if (category.inputType === "fixed") {
-        if (selectedValues[category.id]) {
+        if (effectiveSelectedValues[category.id]) {
           selectedReliefs.push({
             reliefCategoryId: category.id,
             selected: true,
@@ -643,7 +672,7 @@ export default function TaxCalculator() {
         continue;
       }
 
-      const claimedAmount = parseAmount(amountValues[category.id] ?? "");
+      const claimedAmount = parseAmount(effectiveAmountValues[category.id] ?? "");
       if (claimedAmount && claimedAmount > 0) {
         selectedReliefs.push({
           reliefCategoryId: category.id,
@@ -873,7 +902,10 @@ export default function TaxCalculator() {
                   }
                   detail={sectionContent[sectionGroup.section]?.detail ?? ""}
                   itemCount={sectionGroup.categories.length}
-                  isOpen={expandedSections[sectionGroup.section] ?? false}
+                  isOpen={
+                    expandedSections[sectionGroup.section] ??
+                    sectionGroup.section === defaultOpenSection
+                  }
                   onToggle={() => toggleSection(sectionGroup.section)}
                 >
                   <div className="space-y-6">
@@ -888,9 +920,9 @@ export default function TaxCalculator() {
                             <CategoryField
                               key={category.id}
                               category={category}
-                              amountValue={amountValues[category.id] ?? ""}
+                              amountValue={effectiveAmountValues[category.id] ?? ""}
                               countValue={countValues[category.id] ?? ""}
-                              selected={selectedValues[category.id] ?? false}
+                              selected={effectiveSelectedValues[category.id] ?? false}
                               profileApplied={profileApplied}
                               validationMessage={categoryValidationMessages[category.id]}
                               disabled={false}

@@ -33,7 +33,16 @@ server:
 clair:
   auth:
     frontend-base-url: ${CLAIR_AUTH_FRONTEND_BASE_URL:http://localhost:3000}
+    public-base-url: ${CLAIR_AUTH_PUBLIC_BASE_URL:}
+    mobile-app-scheme: ${CLAIR_AUTH_MOBILE_APP_SCHEME:clair-tax}
     magic-link-ttl: ${CLAIR_AUTH_MAGIC_LINK_TTL:PT15M}
+    otp-ttl: ${CLAIR_AUTH_OTP_TTL:PT10M}
+    otp-resend-cooldown: ${CLAIR_AUTH_OTP_RESEND_COOLDOWN:PT30S}
+    otp-rate-limit-window: ${CLAIR_AUTH_OTP_RATE_LIMIT_WINDOW:PT1H}
+    otp-max-attempts: ${CLAIR_AUTH_OTP_MAX_ATTEMPTS:5}
+    otp-max-requests-per-email: ${CLAIR_AUTH_OTP_MAX_REQUESTS_PER_EMAIL:5}
+    otp-max-requests-per-ip: ${CLAIR_AUTH_OTP_MAX_REQUESTS_PER_IP:20}
+    otp-max-requests-per-device: ${CLAIR_AUTH_OTP_MAX_REQUESTS_PER_DEVICE:10}
     session-ttl: ${CLAIR_AUTH_SESSION_TTL:P30D}
     cookie-name: ${CLAIR_AUTH_COOKIE_NAME:clair_tax_session}
   dev-user:

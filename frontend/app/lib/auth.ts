@@ -7,6 +7,7 @@ const apiErrorSchema = z.object({
 
 const magicLinkRequestResponseSchema = z.object({
   message: z.string().min(1),
+  debugVerifyUrl: z.string().url().nullable().optional(),
 });
 
 const authSessionSchema = z.object({
@@ -22,6 +23,7 @@ const AUTH_SYNC_STORAGE_KEY = "clair-tax-auth-sync";
 export const authSessionQueryKey = ["auth-session"] as const;
 
 export type AuthSession = z.infer<typeof authSessionSchema>;
+export type MagicLinkRequestResult = z.infer<typeof magicLinkRequestResponseSchema>;
 export type AuthSyncEvent = {
   type: "signed-in" | "signed-out";
   timestamp: number;
@@ -65,7 +67,7 @@ export async function fetchAuthSession(): Promise<AuthSession> {
   return authSessionSchema.parse(data);
 }
 
-export async function requestMagicLink(email: string): Promise<string> {
+export async function requestMagicLink(email: string): Promise<MagicLinkRequestResult> {
   const response = await backendFetch("/api/auth/magic-link/request", {
     method: "POST",
     headers: {
@@ -85,7 +87,7 @@ export async function requestMagicLink(email: string): Promise<string> {
   }
 
   const data: unknown = await response.json();
-  return magicLinkRequestResponseSchema.parse(data).message;
+  return magicLinkRequestResponseSchema.parse(data);
 }
 
 export async function logoutCurrentSession(): Promise<void> {

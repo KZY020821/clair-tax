@@ -51,7 +51,7 @@ public class MagicLinkAuthService {
     }
 
     @Transactional
-    public void requestMagicLink(String email, String backendBaseUrl) {
+    public Optional<String> requestMagicLink(String email, String authLinkBaseUrl, boolean mobileClient) {
         String normalizedEmail = normalizeEmail(email);
         String rawToken = generateOpaqueToken();
 
@@ -61,13 +61,13 @@ public class MagicLinkAuthService {
                 now().plus(Duration.parse(authProperties.getMagicLinkTtl()))
         ));
 
-        String verifyUrl = UriComponentsBuilder.fromUriString(backendBaseUrl)
-                .path("/api/auth/magic-link/verify")
+        String verifyUrl = UriComponentsBuilder.fromUriString(authLinkBaseUrl)
+                .path(mobileClient ? "/api/auth/mobile-link" : "/api/auth/magic-link/verify")
                 .queryParam("token", rawToken)
                 .build(true)
                 .toUriString();
 
-        magicLinkMailService.sendMagicLink(normalizedEmail, verifyUrl);
+        return magicLinkMailService.sendMagicLink(normalizedEmail, verifyUrl);
     }
 
     @Transactional
@@ -89,25 +89,32 @@ public class MagicLinkAuthService {
 
         magicLinkToken.markUsed(currentTimestamp);
 
-        String rawSessionToken = generateOpaqueToken();
-        WebSession webSession = webSessionRepository.save(new WebSession(
-                appUser,
-                hashToken(rawSessionToken),
-                currentTimestamp.plus(Duration.parse(authProperties.getSessionTtl())),
-                currentTimestamp
-        ));
-
-        return new VerifiedMagicLinkSession(
-                webSession.getId(),
-                appUser.getId(),
-                appUser.getEmail(),
-                rawSessionToken
-        );
+        return createSessionForUser(appUser, currentTimestamp);
     }
 
     @Transactional(readOnly = true)
     public Optional<AuthSessionView> resolveSession(HttpServletRequest request) {
+        // Try Bearer token first (mobile)
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && !authHeader.isBlank()) {
+            Optional<AuthSessionView> bearerSession = resolveSessionFromBearer(authHeader);
+            if (bearerSession.isPresent()) {
+                return bearerSession;
+            }
+        }
+
+        // Fall back to cookie (web)
         return resolveSession(readCookie(request, authProperties.getCookieName()));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<AuthSessionView> resolveSessionFromBearer(String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return Optional.empty();
+        }
+
+        String rawToken = authHeader.substring(7);
+        return resolveSession(rawToken);
     }
 
     @Transactional(readOnly = true)
@@ -129,7 +136,26 @@ public class MagicLinkAuthService {
 
     @Transactional
     public void logout(HttpServletRequest request) {
-        String rawSessionToken = readCookie(request, authProperties.getCookieName());
+        String rawSessionToken = resolveRawSessionToken(request);
+        if (rawSessionToken == null || rawSessionToken.isBlank()) {
+            return;
+        }
+
+        revokeSession(rawSessionToken);
+    }
+
+    @Transactional
+    public VerifiedMagicLinkSession createSessionForEmail(String email) {
+        String normalizedEmail = normalizeEmail(email);
+        OffsetDateTime currentTimestamp = now();
+        AppUser appUser = appUserRepository.findByEmail(normalizedEmail)
+                .orElseGet(() -> appUserRepository.save(new AppUser(normalizedEmail)));
+        appUser.markLoggedIn(currentTimestamp);
+        return createSessionForUser(appUser, currentTimestamp);
+    }
+
+    @Transactional
+    public void revokeSession(String rawSessionToken) {
         if (rawSessionToken == null || rawSessionToken.isBlank()) {
             return;
         }
@@ -144,6 +170,13 @@ public class MagicLinkAuthService {
 
     public String getCookieName() {
         return authProperties.getCookieName();
+    }
+
+    public String getMobileAppVerifyUrl(String token) {
+        return UriComponentsBuilder.fromUriString(authProperties.getMobileAppScheme() + "://auth/verify")
+                .queryParam("token", token)
+                .build(true)
+                .toUriString();
     }
 
     public String mapFailureReasonToQueryValue(MagicLinkFailureReason reason) {
@@ -176,6 +209,33 @@ public class MagicLinkAuthService {
 
     private OffsetDateTime now() {
         return OffsetDateTime.now(ZoneOffset.UTC);
+    }
+
+    private VerifiedMagicLinkSession createSessionForUser(AppUser appUser, OffsetDateTime currentTimestamp) {
+        String rawSessionToken = generateOpaqueToken();
+        WebSession webSession = webSessionRepository.save(new WebSession(
+                appUser,
+                hashToken(rawSessionToken),
+                currentTimestamp.plus(Duration.parse(authProperties.getSessionTtl())),
+                currentTimestamp
+        ));
+
+        return new VerifiedMagicLinkSession(
+                webSession.getId(),
+                appUser.getId(),
+                appUser.getEmail(),
+                rawSessionToken,
+                webSession.getExpiresAt().toInstant()
+        );
+    }
+
+    private String resolveRawSessionToken(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+
+        return readCookie(request, authProperties.getCookieName());
     }
 
     private String readCookie(HttpServletRequest request, String cookieName) {

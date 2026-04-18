@@ -9,6 +9,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+  mail:
+    username: clairtax.notification@gmail.com
+    password: test-app-password
 
 clair:
   receipts:
