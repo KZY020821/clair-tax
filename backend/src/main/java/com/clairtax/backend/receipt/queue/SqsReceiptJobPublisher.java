@@ -3,7 +3,6 @@ package com.clairtax.backend.receipt.queue;
 import com.clairtax.backend.receipt.config.ReceiptProcessingProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -11,7 +10,6 @@ import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 @Service
-@Profile("!local & !test & !postgres")
 public class SqsReceiptJobPublisher implements ReceiptJobPublisher {
 
     private final ReceiptProcessingProperties properties;

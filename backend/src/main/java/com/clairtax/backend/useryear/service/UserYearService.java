@@ -20,7 +20,6 @@ import com.clairtax.backend.useryear.dto.UserYearResponse;
 import com.clairtax.backend.useryear.dto.UserYearWorkspaceResponse;
 import com.clairtax.backend.useryear.entity.UserPolicyYear;
 import com.clairtax.backend.useryear.repository.UserPolicyYearRepository;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,7 +31,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
-@Profile("!local")
 @Transactional
 public class UserYearService {
 

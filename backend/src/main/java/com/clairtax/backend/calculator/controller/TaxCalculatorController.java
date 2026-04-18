@@ -4,14 +4,12 @@ import com.clairtax.backend.calculator.dto.CalculateTaxRequest;
 import com.clairtax.backend.calculator.dto.CalculateTaxResponse;
 import com.clairtax.backend.calculator.service.TaxCalculatorService;
 import jakarta.validation.Valid;
-import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Profile("!local")
 @RequestMapping("/api/calculator")
 public class TaxCalculatorController {
 

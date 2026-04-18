@@ -17,7 +17,6 @@ import com.clairtax.backend.user.repository.AppUserRepository;
 import com.clairtax.backend.user.service.CurrentUser;
 import com.clairtax.backend.user.service.CurrentUserProvider;
 import com.clairtax.backend.user.service.ProfileReliefResolver;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,7 +28,6 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
-@Profile("!local")
 @Transactional(readOnly = true)
 public class TaxCalculatorService {
 

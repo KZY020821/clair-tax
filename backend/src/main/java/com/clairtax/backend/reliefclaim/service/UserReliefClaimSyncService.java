@@ -8,7 +8,6 @@ import com.clairtax.backend.reliefclaim.entity.UserReliefClaim;
 import com.clairtax.backend.reliefclaim.repository.UserReliefClaimRepository;
 import com.clairtax.backend.useryear.entity.UserPolicyYear;
 import com.clairtax.backend.useryear.repository.UserPolicyYearRepository;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,7 +15,6 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 @Service
-@Profile("!local")
 @Transactional
 public class UserReliefClaimSyncService {
 

@@ -7,29 +7,11 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "clair.receipts")
 public class ReceiptProcessingProperties {
 
-    private String storagePath = "/tmp/clair-tax-receipts";
-    private String uploadPath = "/tmp/clair-tax-receipt-uploads";
-    private String bucketName = "clair-tax-receipts";
+    private String bucketName;
     private String uploadIntentTtl = "PT15M";
-    private String internalApiToken = "dev-internal-token";
+    private String internalApiToken;
     private Queue queue = new Queue();
     private Aws aws = new Aws();
-
-    public String getStoragePath() {
-        return storagePath;
-    }
-
-    public void setStoragePath(String storagePath) {
-        this.storagePath = storagePath;
-    }
-
-    public String getUploadPath() {
-        return uploadPath;
-    }
-
-    public void setUploadPath(String uploadPath) {
-        this.uploadPath = uploadPath;
-    }
 
     public String getBucketName() {
         return bucketName;

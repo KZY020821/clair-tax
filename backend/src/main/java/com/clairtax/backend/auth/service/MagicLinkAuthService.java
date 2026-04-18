@@ -9,7 +9,6 @@ import com.clairtax.backend.user.entity.AppUser;
 import com.clairtax.backend.user.repository.AppUserRepository;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -26,7 +25,6 @@ import java.util.Locale;
 import java.util.Optional;
 
 @Service
-@Profile("!local")
 public class MagicLinkAuthService {
 
     private final MagicLinkTokenRepository magicLinkTokenRepository;

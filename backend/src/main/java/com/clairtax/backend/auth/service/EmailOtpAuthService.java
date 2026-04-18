@@ -3,7 +3,6 @@ package com.clairtax.backend.auth.service;
 import com.clairtax.backend.auth.config.AuthProperties;
 import com.clairtax.backend.auth.entity.EmailOtpCode;
 import com.clairtax.backend.auth.repository.EmailOtpCodeRepository;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +18,6 @@ import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Service
-@Profile("!local")
 public class EmailOtpAuthService {
 
     private final EmailOtpCodeRepository emailOtpCodeRepository;

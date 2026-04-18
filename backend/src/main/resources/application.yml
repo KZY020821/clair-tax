@@ -1,22 +1,41 @@
 spring:
   application:
     name: clair-tax-backend
-  profiles:
-    default: local
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/clair_tax}
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
   jpa:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
   flyway:
-    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    enabled: true
     locations: classpath:db/migration
+  mail:
+    host: ${SPRING_MAIL_HOST}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME}
+    password: ${SPRING_MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
 
 management:
   endpoints:
@@ -29,11 +48,13 @@ management:
 
 server:
   port: ${SERVER_PORT:8080}
+  tomcat:
+    max-threads: ${SERVER_MAX_THREADS:200}
 
 clair:
   auth:
-    frontend-base-url: ${CLAIR_AUTH_FRONTEND_BASE_URL:http://localhost:3000}
-    public-base-url: ${CLAIR_AUTH_PUBLIC_BASE_URL:}
+    frontend-base-url: ${CLAIR_AUTH_FRONTEND_BASE_URL}
+    public-base-url: ${CLAIR_AUTH_PUBLIC_BASE_URL}
     mobile-app-scheme: ${CLAIR_AUTH_MOBILE_APP_SCHEME:clair-tax}
     magic-link-ttl: ${CLAIR_AUTH_MAGIC_LINK_TTL:PT15M}
     otp-ttl: ${CLAIR_AUTH_OTP_TTL:PT10M}
@@ -45,15 +66,11 @@ clair:
     otp-max-requests-per-device: ${CLAIR_AUTH_OTP_MAX_REQUESTS_PER_DEVICE:10}
     session-ttl: ${CLAIR_AUTH_SESSION_TTL:P30D}
     cookie-name: ${CLAIR_AUTH_COOKIE_NAME:clair_tax_session}
-  dev-user:
-    email: ${CLAIR_DEV_USER_EMAIL:dev@taxrelief.local}
   receipts:
-    storage-path: ${CLAIR_RECEIPTS_STORAGE_PATH:/tmp/clair-tax-receipts}
-    upload-path: ${CLAIR_RECEIPTS_UPLOAD_PATH:/tmp/clair-tax-receipt-uploads}
-    bucket-name: ${CLAIR_RECEIPTS_BUCKET_NAME:clair-tax-receipts}
+    bucket-name: ${CLAIR_RECEIPTS_BUCKET_NAME}
     upload-intent-ttl: ${CLAIR_RECEIPTS_UPLOAD_INTENT_TTL:PT15M}
-    internal-api-token: ${CLAIR_RECEIPTS_INTERNAL_API_TOKEN:dev-internal-token}
+    internal-api-token: ${CLAIR_RECEIPTS_INTERNAL_API_TOKEN}
     aws:
       region: ${AWS_REGION:ap-southeast-1}
     queue:
-      url: ${CLAIR_RECEIPTS_QUEUE_URL:}
+      url: ${CLAIR_RECEIPTS_QUEUE_URL}

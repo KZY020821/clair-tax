@@ -10,7 +10,6 @@ import com.clairtax.backend.useryear.dto.UserYearResponse;
 import com.clairtax.backend.useryear.dto.UserYearWorkspaceResponse;
 import com.clairtax.backend.useryear.service.UserYearService;
 import jakarta.validation.Valid;
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -25,7 +24,6 @@ import java.util.List;
 
 @RestController
 @Validated
-@Profile("!local")
 @RequestMapping("/api/user-years")
 public class UserYearController {
 

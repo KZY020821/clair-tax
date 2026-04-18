@@ -9,7 +9,6 @@ import com.clairtax.backend.receipt.service.ReceiptService;
 import jakarta.validation.Valid;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.MediaTypeFactory;
@@ -28,7 +27,6 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@Profile("!local")
 @RequestMapping("/api/receipts")
 public class ReceiptController {
 

@@ -3,7 +3,6 @@ package com.clairtax.backend.user.service;
 import com.clairtax.backend.calculator.entity.ReliefCategory;
 import com.clairtax.backend.user.entity.AppUser;
 import com.clairtax.backend.user.entity.MaritalStatus;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -13,7 +12,6 @@ import java.util.Map;
 import java.util.Set;
 
 @Service
-@Profile("!local")
 public class ProfileReliefResolver {
 
     private static final String DISABLED_INDIVIDUAL_CODE = "disabled_individual";

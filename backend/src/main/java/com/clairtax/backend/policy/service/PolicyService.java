@@ -7,14 +7,12 @@ import com.clairtax.backend.policy.dto.PolicyReliefCategoryResponse;
 import com.clairtax.backend.policy.dto.PolicyResponse;
 import com.clairtax.backend.policyyear.entity.PolicyYear;
 import com.clairtax.backend.policyyear.repository.PolicyYearRepository;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 @Service
-@Profile("!local")
 @Transactional(readOnly = true)
 public class PolicyService {
 

@@ -8,7 +8,6 @@ import com.clairtax.backend.user.dto.ProfileResponse;
 import com.clairtax.backend.user.dto.UpdateProfileRequest;
 import com.clairtax.backend.user.entity.AppUser;
 import com.clairtax.backend.user.repository.AppUserRepository;
-import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -25,7 +24,6 @@ import java.util.Locale;
 import java.util.UUID;
 
 @Service
-@Profile("!local")
 @Transactional
 public class ProfileService {
 

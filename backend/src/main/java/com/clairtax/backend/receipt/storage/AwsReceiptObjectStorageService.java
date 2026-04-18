@@ -1,7 +1,6 @@
 package com.clairtax.backend.receipt.storage;
 
 import com.clairtax.backend.receipt.config.ReceiptProcessingProperties;
-import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -27,7 +26,6 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 
 @Service
-@Profile("!local & !test & !postgres")
 public class AwsReceiptObjectStorageService implements ReceiptObjectStorageService {
 
     private final ReceiptProcessingProperties properties;

@@ -34,7 +34,6 @@ import com.clairtax.backend.receipt.repository.ReceiptProcessingAttemptRepositor
 import com.clairtax.backend.receipt.repository.ReceiptRepository;
 import com.clairtax.backend.receipt.repository.ReceiptReviewActionRepository;
 import com.clairtax.backend.receipt.repository.ReceiptUploadIntentRepository;
-import com.clairtax.backend.receipt.storage.LocalReceiptObjectStorageService;
 import com.clairtax.backend.receipt.storage.ReceiptObjectStorageService;
 import com.clairtax.backend.receipt.storage.ReceiptUploadTarget;
 import com.clairtax.backend.reliefclaim.service.UserReliefClaimSyncService;
@@ -45,7 +44,6 @@ import com.clairtax.backend.user.service.CurrentUserProvider;
 import com.clairtax.backend.user.service.ProfileReliefResolver;
 import com.clairtax.backend.useryear.entity.UserPolicyYear;
 import com.clairtax.backend.useryear.repository.UserPolicyYearRepository;
-import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,7 +61,6 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Service
-@Profile("!local")
 @Transactional
 public class ReceiptService {
 
@@ -296,13 +293,6 @@ public class ReceiptService {
         validateUploadedObject(intent);
 
         String sha256Hash = computeSha256(intent.getObjectKey());
-        if (receiptObjectStorageService instanceof LocalReceiptObjectStorageService localStorageService) {
-            try {
-                localStorageService.promoteUploadedObject(intent.getObjectKey());
-            } catch (IOException exception) {
-                throw new IllegalStateException("Unable to finalize the uploaded receipt file", exception);
-            }
-        }
 
         Receipt receipt = receiptRepository.save(new Receipt(
                 intent.getUserPolicyYear(),
@@ -713,13 +703,8 @@ public class ReceiptService {
     private String computeSha256(String objectKey) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            InputStream inputStream;
-            if (receiptObjectStorageService instanceof LocalReceiptObjectStorageService localStorageService) {
-                inputStream = localStorageService.openStoredObject(objectKey);
-            } else {
-                Resource resource = receiptObjectStorageService.load(objectKey);
-                inputStream = resource.getInputStream();
-            }
+            Resource resource = receiptObjectStorageService.load(objectKey);
+            InputStream inputStream = resource.getInputStream();
             try (InputStream stream = inputStream) {
                 byte[] buffer = new byte[8192];
                 int read;
