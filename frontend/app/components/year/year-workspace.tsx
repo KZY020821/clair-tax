@@ -360,8 +360,11 @@ export default function YearWorkspace({
     if (!uploadForm.receiptDate.trim()) {
       errors.receiptDate = "Receipt date is required.";
     }
-    if (!uploadForm.amount.trim() || Number(uploadForm.amount) <= 0) {
+    const amount = Number(uploadForm.amount);
+    if (!uploadForm.amount.trim() || amount <= 0) {
       errors.amount = "Amount must be greater than zero.";
+    } else if (activeUploadCategory?.maxAmount && amount > activeUploadCategory.maxAmount) {
+      errors.amount = `Amount cannot exceed ${formatCurrency(activeUploadCategory.maxAmount)} for this category.`;
     }
     if (!uploadForm.file) {
       errors.file = "Please attach a receipt file.";
@@ -695,6 +698,7 @@ export default function YearWorkspace({
                 type="number"
                 min="0.01"
                 step="0.01"
+                max={activeUploadCategory?.maxAmount ?? undefined}
                 className={`app-input ${uploadFormErrors.amount ? "border-red-400 focus:border-red-400 focus:ring-red-400/20" : ""}`}
                 placeholder="0.00"
                 value={uploadForm.amount}
@@ -705,6 +709,9 @@ export default function YearWorkspace({
                   }
                 }}
               />
+              {activeUploadCategory?.maxAmount ? (
+                <p className="app-help">Maximum claimable: {formatCurrency(activeUploadCategory.maxAmount)}</p>
+              ) : null}
               {uploadFormErrors.amount ? (
                 <p className="mt-1.5 text-xs text-red-600">{uploadFormErrors.amount}</p>
               ) : null}

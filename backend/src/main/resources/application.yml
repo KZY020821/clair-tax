@@ -67,10 +67,10 @@ clair:
     session-ttl: ${CLAIR_AUTH_SESSION_TTL:P30D}
     cookie-name: ${CLAIR_AUTH_COOKIE_NAME:clair_tax_session}
   receipts:
-    bucket-name: ${CLAIR_RECEIPTS_BUCKET_NAME}
+    bucket-name: ${CLAIR_RECEIPTS_BUCKET_NAME:}
     upload-intent-ttl: ${CLAIR_RECEIPTS_UPLOAD_INTENT_TTL:PT15M}
-    internal-api-token: ${CLAIR_RECEIPTS_INTERNAL_API_TOKEN}
+    internal-api-token: ${CLAIR_RECEIPTS_INTERNAL_API_TOKEN:}
     aws:
       region: ${AWS_REGION:ap-southeast-1}
     queue:
-      url: ${CLAIR_RECEIPTS_QUEUE_URL}
+      url: ${CLAIR_RECEIPTS_QUEUE_URL:}

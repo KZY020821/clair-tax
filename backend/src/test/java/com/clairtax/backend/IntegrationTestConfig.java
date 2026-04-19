@@ -68,7 +68,8 @@ public class IntegrationTestConfig {
             }
 
             @Override
-            public void storeUploadedObject(String objectKey, InputStream inputStream) {
+            public void storeUploadedObject(String objectKey, InputStream inputStream) throws IOException {
+                uploadedObjects.put(objectKey, inputStream.readAllBytes());
             }
 
             @Override

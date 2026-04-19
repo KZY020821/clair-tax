@@ -1,6 +1,7 @@
 package com.clairtax.backend.receipt.storage;
 
 import com.clairtax.backend.receipt.config.ReceiptProcessingProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 
 @Service
+@ConditionalOnExpression("!'${clair.receipts.bucket-name:}'.isEmpty()")
 public class AwsReceiptObjectStorageService implements ReceiptObjectStorageService {
 
     private final ReceiptProcessingProperties properties;
