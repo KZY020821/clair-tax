@@ -12,6 +12,7 @@ import com.clairtax.backend.receipt.dto.ConfirmReceiptUploadRequest;
 import com.clairtax.backend.receipt.dto.CreateReceiptRequest;
 import com.clairtax.backend.receipt.dto.CreateReceiptUploadIntentRequest;
 import com.clairtax.backend.receipt.dto.DirectReceiptUploadRequest;
+import com.clairtax.backend.receipt.dto.ReplaceReceiptFileRequest;
 import com.clairtax.backend.receipt.dto.ReceiptLatestExtractionResponse;
 import com.clairtax.backend.receipt.dto.ReceiptResponse;
 import com.clairtax.backend.receipt.dto.ReceiptUploadIntentResponse;
@@ -237,6 +238,74 @@ public class ReceiptService {
         saved.assignFileUrl(buildStoredFileUrl(saved.getId()));
         syncClaim(userPolicyYear.getId(), reliefCategory);
         return toResponse(saved);
+    }
+
+    public ReceiptResponse replaceReceiptFile(UUID id, ReplaceReceiptFileRequest fields, MultipartFile file) {
+        String mimeType = file.getContentType() != null ? file.getContentType().toLowerCase() : "";
+        if (!mimeType.equals("application/pdf") && !mimeType.equals("image/png") && !mimeType.equals("image/jpeg")) {
+            throw new CalculatorValidationException("Only PDF, PNG, and JPG files are accepted.");
+        }
+        if (file.getSize() > 10L * 1024L * 1024L) {
+            throw new CalculatorValidationException("File is too large. Please upload a file smaller than 10MB.");
+        }
+
+        Receipt receipt = findReceiptForCurrentUser(id);
+        String oldS3Key = receipt.getS3Key();
+        UUID previousUserPolicyYearId = receipt.getUserPolicyYear().getId();
+        UUID previousReliefCategoryId = receipt.getReliefCategory() == null ? null : receipt.getReliefCategory().getId();
+
+        AppUser currentUser = getCurrentUserEntity();
+        UserPolicyYear userPolicyYear = getOrCreateUserPolicyYear(receipt.getPolicyYear(), currentUser);
+        ReliefCategory reliefCategory = resolveReliefCategory(
+                fields.reliefCategoryId(),
+                userPolicyYear.getPolicyYear(),
+                currentUser
+        );
+
+        String sanitizedFileName = sanitizeFileName(
+                normalizeRequiredString(file.getOriginalFilename(), "receipt")
+        );
+        String newObjectKey = "receipts-%d-%s-%s-%s".formatted(
+                receipt.getPolicyYear(),
+                currentUser.getId(),
+                UUID.randomUUID(),
+                sanitizedFileName
+        );
+
+        try {
+            receiptObjectStorageService.storeUploadedObject(newObjectKey, file.getInputStream());
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to upload replacement receipt file to storage", exception);
+        }
+
+        String sha256Hash = computeSha256(newObjectKey);
+
+        tryDeleteStoredFile(oldS3Key);
+
+        receipt.replaceFile(
+                newObjectKey,
+                buildStoredFileUrl(receipt.getId()),
+                sanitizedFileName,
+                mimeType,
+                file.getSize(),
+                sha256Hash,
+                OffsetDateTime.now()
+        );
+        receipt.updateManualDetails(
+                userPolicyYear,
+                reliefCategory,
+                fields.merchantName().trim(),
+                fields.receiptDate(),
+                fields.amount(),
+                normalizeOptionalString(fields.notes()),
+                sanitizedFileName,
+                buildStoredFileUrl(receipt.getId())
+        );
+
+        receiptRepository.save(receipt);
+        syncClaim(previousUserPolicyYearId, previousReliefCategoryId);
+        syncClaim(userPolicyYear.getId(), reliefCategory);
+        return toResponse(receipt);
     }
 
     public ReceiptResponse updateReceipt(UUID id, UpdateReceiptRequest request) {

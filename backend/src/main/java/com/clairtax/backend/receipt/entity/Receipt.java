@@ -195,6 +195,24 @@ public class Receipt {
         this.processingErrorMessage = null;
     }
 
+    public void replaceFile(
+            String newS3Key,
+            String newFileUrl,
+            String newFileName,
+            String newMimeType,
+            long newFileSizeBytes,
+            String newSha256Hash,
+            OffsetDateTime newUploadedAt
+    ) {
+        this.s3Key = newS3Key;
+        this.fileUrl = newFileUrl;
+        this.fileName = newFileName;
+        this.mimeType = newMimeType;
+        this.fileSizeBytes = newFileSizeBytes;
+        this.sha256Hash = newSha256Hash;
+        this.uploadedAt = newUploadedAt;
+    }
+
     public void assignFileUrl(String fileUrl) {
         this.fileUrl = fileUrl;
     }

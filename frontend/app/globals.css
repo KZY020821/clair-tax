@@ -82,7 +82,7 @@
   }
 
   .app-pill {
-    @apply inline-flex items-center rounded-full border border-brand-line-strong bg-brand-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-black;
+    @apply inline-flex items-center rounded-lg border border-brand-line-strong bg-brand-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-black;
   }
 
   .app-pill-blue {
@@ -108,6 +108,10 @@
 
   .app-button-secondary {
     @apply inline-flex items-center justify-center rounded-md border border-brand-line-strong bg-brand-white px-5 py-2.5 text-sm font-semibold text-brand-blue transition hover:border-brand-blue hover:bg-brand-ice focus:outline-none focus:ring-2 focus:ring-brand-blue/20;
+  }
+
+  .app-button-danger {
+    @apply inline-flex items-center justify-center rounded-md border border-red-300 bg-white px-5 py-2.5 text-sm font-semibold text-red-600 transition hover:border-red-500 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-400/20 disabled:cursor-not-allowed disabled:border-brand-line disabled:bg-brand-ice disabled:text-brand-muted;
   }
 
   /* ── Sidebar ── */

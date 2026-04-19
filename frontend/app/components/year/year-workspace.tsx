@@ -132,10 +132,12 @@ function CategorySummaryCard({
   category,
   emphasized = false,
   onUploadClick,
+  year,
 }: Readonly<{
   category: UserYearCategorySummary;
   emphasized?: boolean;
   onUploadClick?: (categoryId: string) => void;
+  year?: number;
 }>) {
   const claimPercentage = getClaimPercentage(
     category.claimedAmount,
@@ -198,15 +200,25 @@ function CategorySummaryCard({
           </span>
         </div>
 
-        {onUploadClick ? (
-          <button
-            type="button"
-            onClick={() => onUploadClick(category.reliefCategoryId)}
-            className="app-button-secondary"
-          >
-            Upload receipt
-          </button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {year !== undefined ? (
+            <Link
+              href={`/year/${year}/category/${category.reliefCategoryId}`}
+              className="app-button-secondary"
+            >
+              View receipts
+            </Link>
+          ) : null}
+          {onUploadClick ? (
+            <button
+              type="button"
+              onClick={() => onUploadClick(category.reliefCategoryId)}
+              className="app-button-secondary"
+            >
+              Upload receipt
+            </button>
+          ) : null}
+        </div>
       </div>
     </article>
   );
@@ -605,6 +617,7 @@ export default function YearWorkspace({
             <CategorySummaryCard
               key={category.reliefCategoryId}
               category={category}
+              year={year}
               onUploadClick={handleCategoryUploadClick}
             />
           ))}
@@ -915,13 +928,14 @@ export default function YearWorkspace({
                           onClick={() => {
                             handleEdit(receipt);
                           }}
-                          disabled={receipt.status !== "verified"}
+                          // commented for now, as no AI is integrated yet
+                          // disabled={receipt.status !== "verified"}
                         >
                           Edit
                         </button>
                         <button
                           type="button"
-                          className="app-button-secondary"
+                          className="app-button-danger"
                           onClick={() => {
                             handleDelete(receipt);
                           }}

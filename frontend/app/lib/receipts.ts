@@ -315,6 +315,61 @@ export async function uploadReceiptForUserYear(
   return receiptSchema.parse(data);
 }
 
+export async function fetchReceipt(receiptId: string): Promise<Receipt> {
+  const response = await backendFetch(`/api/receipts/${receiptId}`, {
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await getApiErrorMessage(response, `Failed to load receipt (${response.status})`),
+    );
+  }
+
+  const data: unknown = await response.json();
+  return receiptSchema.parse(data);
+}
+
+export type ReplaceReceiptFileRequest = {
+  merchantName: string;
+  receiptDate: string;
+  amount: number;
+  reliefCategoryId?: string | null;
+  notes?: string | null;
+  file: File;
+};
+
+export async function replaceReceiptFile(
+  receiptId: string,
+  payload: ReplaceReceiptFileRequest,
+): Promise<Receipt> {
+  const formData = new FormData();
+  formData.append("merchantName", payload.merchantName);
+  formData.append("receiptDate", payload.receiptDate);
+  formData.append("amount", String(payload.amount));
+  if (payload.reliefCategoryId) {
+    formData.append("reliefCategoryId", payload.reliefCategoryId);
+  }
+  if (payload.notes) {
+    formData.append("notes", payload.notes);
+  }
+  formData.append("file", payload.file);
+
+  const response = await backendFetch(`/api/receipts/${receiptId}/file`, {
+    method: "PATCH",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await getApiErrorMessage(response, `Failed to replace receipt file (${response.status})`),
+    );
+  }
+
+  const data: unknown = await response.json();
+  return receiptSchema.parse(data);
+}
+
 export function resolveReceiptFileUrl(fileUrl: string | null): string | null {
   return buildReceiptFileHref(fileUrl);
 }
