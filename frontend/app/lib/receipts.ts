@@ -373,3 +373,48 @@ export async function replaceReceiptFile(
 export function resolveReceiptFileUrl(fileUrl: string | null): string | null {
   return buildReceiptFileHref(fileUrl);
 }
+
+export type QuickExtractResponse = {
+  receiptId: string;
+  merchantName: string | null;
+  receiptDate: string | null;
+  amount: number | null;
+  currency: string | null;
+};
+
+const quickExtractResponseSchema = z.object({
+  receiptId: z.string().uuid(),
+  merchantName: z.string().min(1).nullable(),
+  receiptDate: z.string().min(1).nullable(),
+  amount: moneyValueSchema.nullable(),
+  currency: z.string().min(1).nullable(),
+});
+
+export async function quickExtractReceiptForUserYear(
+  year: number,
+  file: File,
+  reliefCategoryId?: string | null,
+): Promise<QuickExtractResponse> {
+  const formData = new FormData();
+  if (reliefCategoryId) {
+    formData.append("reliefCategoryId", reliefCategoryId);
+  }
+  formData.append("file", file);
+
+  const response = await backendFetch(
+    `/api/user-years/${year}/receipts/quick-extract`,
+    { method: "POST", body: formData },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getApiErrorMessage(
+        response,
+        `Failed to upload receipt for extraction (${response.status})`,
+      ),
+    );
+  }
+
+  const data: unknown = await response.json();
+  return quickExtractResponseSchema.parse(data);
+}

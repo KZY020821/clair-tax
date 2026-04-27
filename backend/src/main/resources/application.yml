@@ -74,3 +74,10 @@ clair:
       region: ${AWS_REGION:ap-southeast-1}
     queue:
       url: ${CLAIR_RECEIPTS_QUEUE_URL:}
+  ai-service:
+    base-url: ${CLAIR_AI_SERVICE_BASE_URL:http://localhost:8000}
+    connect-timeout-seconds: 5
+    read-timeout-seconds: 30
+    amount-confidence-threshold: 0.5
+    date-confidence-threshold: 0.4
+    merchant-confidence-threshold: 0.3

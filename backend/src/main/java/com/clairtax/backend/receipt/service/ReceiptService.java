@@ -7,7 +7,9 @@ import com.clairtax.backend.calculator.repository.ReliefCategoryRepository;
 import com.clairtax.backend.policyyear.entity.PolicyYear;
 import com.clairtax.backend.policyyear.repository.PolicyYearRepository;
 import com.clairtax.backend.receipt.config.ReceiptProcessingProperties;
+import com.clairtax.backend.receipt.dto.AiExtractionResult;
 import com.clairtax.backend.receipt.dto.ConfirmReceiptReviewRequest;
+import com.clairtax.backend.receipt.dto.QuickExtractResponse;
 import com.clairtax.backend.receipt.dto.ConfirmReceiptUploadRequest;
 import com.clairtax.backend.receipt.dto.CreateReceiptRequest;
 import com.clairtax.backend.receipt.dto.CreateReceiptUploadIntentRequest;
@@ -51,6 +53,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -84,6 +87,7 @@ public class ReceiptService {
     private final ReceiptJobPublisher receiptJobPublisher;
     private final ProfileReliefResolver profileReliefResolver;
     private final ReceiptProcessingProperties properties;
+    private final AiExtractionService aiExtractionService;
 
     public ReceiptService(
             ReceiptRepository receiptRepository,
@@ -100,7 +104,8 @@ public class ReceiptService {
             ReceiptObjectStorageService receiptObjectStorageService,
             ReceiptJobPublisher receiptJobPublisher,
             ProfileReliefResolver profileReliefResolver,
-            ReceiptProcessingProperties properties
+            ReceiptProcessingProperties properties,
+            AiExtractionService aiExtractionService
     ) {
         this.receiptRepository = receiptRepository;
         this.receiptUploadIntentRepository = receiptUploadIntentRepository;
@@ -117,6 +122,7 @@ public class ReceiptService {
         this.receiptJobPublisher = receiptJobPublisher;
         this.profileReliefResolver = profileReliefResolver;
         this.properties = properties;
+        this.aiExtractionService = aiExtractionService;
     }
 
     @Transactional(readOnly = true)
@@ -238,6 +244,70 @@ public class ReceiptService {
         saved.assignFileUrl(buildStoredFileUrl(saved.getId()));
         syncClaim(userPolicyYear.getId(), reliefCategory);
         return toResponse(saved);
+    }
+
+    public QuickExtractResponse quickExtract(Integer year, UUID reliefCategoryId, MultipartFile file) {
+        String mimeType = file.getContentType() != null ? file.getContentType().toLowerCase() : "";
+        if (!mimeType.equals("application/pdf") && !mimeType.equals("image/png") && !mimeType.equals("image/jpeg")) {
+            throw new CalculatorValidationException("Only PDF, PNG, and JPG files are accepted.");
+        }
+        if (file.getSize() > 10L * 1024L * 1024L) {
+            throw new CalculatorValidationException("File is too large. Please upload a file smaller than 10MB.");
+        }
+
+        AppUser currentUser = getCurrentUserEntity();
+        UserPolicyYear userPolicyYear = findExistingUserPolicyYear(year);
+        ReliefCategory reliefCategory = resolveReliefCategory(
+                reliefCategoryId,
+                userPolicyYear.getPolicyYear(),
+                currentUser
+        );
+
+        String sanitizedFileName = sanitizeFileName(
+                normalizeRequiredString(file.getOriginalFilename(), "receipt")
+        );
+        String objectKey = "receipts-%d-%s-%s-%s".formatted(
+                year,
+                currentUser.getId(),
+                UUID.randomUUID(),
+                sanitizedFileName
+        );
+
+        byte[] fileBytes;
+        try {
+            fileBytes = file.getBytes();
+            receiptObjectStorageService.storeUploadedObject(objectKey, new ByteArrayInputStream(fileBytes));
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to upload receipt file to storage", exception);
+        }
+
+        Receipt receipt = new Receipt(
+                userPolicyYear,
+                reliefCategory,
+                null,
+                sanitizedFileName,
+                "pending",
+                properties.getBucketName(),
+                objectKey,
+                mimeType,
+                file.getSize(),
+                UUID.randomUUID().toString().replace("-", ""),
+                ReceiptStatus.UPLOADED,
+                OffsetDateTime.now()
+        );
+        Receipt saved = receiptRepository.save(receipt);
+        saved.assignFileUrl(buildStoredFileUrl(saved.getId()));
+
+        AiExtractionResult aiResult = aiExtractionService.extractFields(fileBytes, sanitizedFileName, mimeType);
+        AiExtractionService.FilteredExtractionFields fields = aiExtractionService.applyThresholds(aiResult);
+
+        return new QuickExtractResponse(
+                saved.getId(),
+                fields.merchantName(),
+                fields.receiptDate(),
+                fields.amount(),
+                fields.currency()
+        );
     }
 
     public ReceiptResponse replaceReceiptFile(UUID id, ReplaceReceiptFileRequest fields, MultipartFile file) {

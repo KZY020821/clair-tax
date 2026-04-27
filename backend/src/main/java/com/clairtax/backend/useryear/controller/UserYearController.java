@@ -1,6 +1,7 @@
 package com.clairtax.backend.useryear.controller;
 
 import com.clairtax.backend.receipt.dto.DirectReceiptUploadRequest;
+import com.clairtax.backend.receipt.dto.QuickExtractResponse;
 import com.clairtax.backend.receipt.dto.ReceiptResponse;
 import com.clairtax.backend.receipt.service.ReceiptService;
 import com.clairtax.backend.useryear.dto.CreateUserYearRequest;
@@ -78,5 +79,15 @@ public class UserYearController {
         );
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(receiptService.uploadReceipt(year, fields, file));
+    }
+
+    @PostMapping(value = "/{year}/receipts/quick-extract", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<QuickExtractResponse> quickExtractReceipt(
+            @PathVariable Integer year,
+            @RequestParam(value = "reliefCategoryId", required = false) UUID reliefCategoryId,
+            @RequestPart("file") MultipartFile file
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(receiptService.quickExtract(year, reliefCategoryId, file));
     }
 }
