@@ -38,6 +38,9 @@ public class AppUser {
     @Column(name = "has_children")
     private Boolean hasChildren;
 
+    @Column(name = "tin", length = 20)
+    private String tin;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -85,6 +88,10 @@ public class AppUser {
         return hasChildren;
     }
 
+    public String getTin() {
+        return tin;
+    }
+
     public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
@@ -106,10 +113,12 @@ public class AppUser {
             MaritalStatus maritalStatus,
             Boolean spouseDisabled,
             Boolean spouseWorking,
-            Boolean hasChildren
+            Boolean hasChildren,
+            String tin
     ) {
         this.disabled = disabled;
         this.maritalStatus = maritalStatus.getValue();
+        this.tin = (tin != null && !tin.isBlank()) ? tin.toUpperCase().strip() : null;
 
         switch (maritalStatus) {
             case SINGLE -> {
@@ -136,5 +145,6 @@ public class AppUser {
         this.spouseDisabled = null;
         this.spouseWorking = null;
         this.hasChildren = null;
+        this.tin = null;
     }
 }

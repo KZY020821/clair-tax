@@ -23,6 +23,9 @@ public record ReceiptResponse(
         String processingErrorCode,
         String processingErrorMessage,
         ReceiptLatestExtractionResponse latestExtraction,
+        String einvoiceUuid,
+        String einvoiceNumber,
+        String supplierTin,
         OffsetDateTime uploadedAt,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt

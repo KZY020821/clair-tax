@@ -51,6 +51,10 @@ server:
   tomcat:
     max-threads: ${SERVER_MAX_THREADS:200}
 
+spring.servlet.multipart:
+  max-file-size: 20MB
+  max-request-size: 25MB
+
 clair:
   auth:
     frontend-base-url: ${CLAIR_AUTH_FRONTEND_BASE_URL}
@@ -78,6 +82,7 @@ clair:
     base-url: ${CLAIR_AI_SERVICE_BASE_URL:http://localhost:8000}
     connect-timeout-seconds: 5
     read-timeout-seconds: 30
+    chat-read-timeout-seconds: ${CLAIR_AI_SERVICE_CHAT_READ_TIMEOUT_SECONDS:60}
     amount-confidence-threshold: 0.5
     date-confidence-threshold: 0.4
     merchant-confidence-threshold: 0.3

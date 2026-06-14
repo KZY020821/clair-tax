@@ -20,6 +20,8 @@ from app.clients.s3_storage import StorageError
 from app.config import get_settings
 from app.models.extraction import ExtractionResult
 from app.models.job import ReceiptJob
+from app.routers.chat import router as chat_router
+from app.services.intent_classifier import prewarm_intent_classifier
 from app.services.normalization import (
     extract_amount_candidates,
     extract_date_candidates,
@@ -36,16 +38,22 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.include_router(chat_router)
+
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    """Pre-warm EasyOCR reader so first request isn't slow."""
+    """Pre-warm EasyOCR reader and intent classifier so first requests aren't slow."""
     loop = asyncio.get_event_loop()
     try:
         await loop.run_in_executor(None, get_ocr_reader)
         logger.info("easyocr_prewarm_complete")
     except Exception as exc:
         logger.warning("easyocr_prewarm_failed", detail=str(exc))
+    try:
+        await loop.run_in_executor(None, prewarm_intent_classifier)
+    except Exception as exc:
+        logger.warning("intent_classifier_prewarm_failed", detail=str(exc))
 
 
 @app.get("/health")

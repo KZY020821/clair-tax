@@ -10,6 +10,7 @@ public class AiServiceProperties {
     private String baseUrl = "http://localhost:8000";
     private int connectTimeoutSeconds = 5;
     private int readTimeoutSeconds = 30;
+    private int chatReadTimeoutSeconds = 60;
     private double amountConfidenceThreshold = 0.5;
     private double dateConfidenceThreshold = 0.4;
     private double merchantConfidenceThreshold = 0.3;
@@ -36,6 +37,14 @@ public class AiServiceProperties {
 
     public void setReadTimeoutSeconds(int readTimeoutSeconds) {
         this.readTimeoutSeconds = readTimeoutSeconds;
+    }
+
+    public int getChatReadTimeoutSeconds() {
+        return chatReadTimeoutSeconds;
+    }
+
+    public void setChatReadTimeoutSeconds(int chatReadTimeoutSeconds) {
+        this.chatReadTimeoutSeconds = chatReadTimeoutSeconds;
     }
 
     public double getAmountConfidenceThreshold() {

@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.ServerSideEncryption;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 import software.amazon.awssdk.regions.Region;
@@ -139,5 +140,15 @@ public class AwsReceiptObjectStorageService implements ReceiptObjectStorageServi
     @Override
     public void delete(String objectKey) {
         s3Client.deleteObject(builder -> builder.bucket(properties.getBucketName()).key(objectKey));
+    }
+
+    @Override
+    public String generatePresignedGetUrl(String objectKey, Duration ttl) {
+        return s3Presigner.presignGetObject(
+                GetObjectPresignRequest.builder()
+                        .getObjectRequest(r -> r.bucket(properties.getBucketName()).key(objectKey))
+                        .signatureDuration(ttl)
+                        .build()
+        ).url().toString();
     }
 }

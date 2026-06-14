@@ -96,6 +96,11 @@ public class IntegrationTestConfig {
             public void delete(String objectKey) {
                 uploadedObjects.remove(objectKey);
             }
+
+            @Override
+            public String generatePresignedGetUrl(String objectKey, java.time.Duration ttl) {
+                return TEST_UPLOAD_BASE + "/" + objectKey + "?presigned=true";
+            }
         };
     }
 

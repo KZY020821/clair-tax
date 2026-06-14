@@ -4,6 +4,7 @@ import org.springframework.core.io.Resource;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 
 public interface ReceiptObjectStorageService {
 
@@ -18,4 +19,6 @@ public interface ReceiptObjectStorageService {
     long size(String objectKey) throws IOException;
 
     void delete(String objectKey) throws IOException;
+
+    String generatePresignedGetUrl(String objectKey, Duration ttl) throws IOException;
 }

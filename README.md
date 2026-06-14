@@ -7,9 +7,6 @@ Monorepo scaffold for a Malaysian personal tax management system.
 - `frontend/` - Bun-managed Next.js App Router web app with TypeScript and TailwindCSS
 - `backend/` - Spring Boot API scaffold using Java 21 and Maven
 - `ai-service/` - FastAPI scaffold for OCR and AI orchestration
-- `docs/` - repository-owned documentation
-- `mobile-app/` - future mobile client workspace
-- `infra/` - future infrastructure workspace
 
 ## Current scope
 
@@ -18,7 +15,6 @@ This repository currently includes scaffolding only:
 - frontend app shell
 - backend health endpoint
 - AI service health endpoint
-- setup documentation for each service
 
 Authentication, tax logic, persistence flows, and containerization are intentionally not added yet.
 

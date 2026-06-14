@@ -23,6 +23,21 @@ class Settings(BaseSettings):
     RECEIPT_DATE_SELECTION_THRESHOLD: float = 0.4
     RECEIPT_VALIDITY_THRESHOLD: float = 0.3
     LOG_LEVEL: str = "INFO"
+    # Chat / DeepSeek
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_API_BASE_URL: str = "https://api.deepseek.com/v1"
+    DEEPSEEK_CHAT_MODEL: str = "deepseek-chat"
+    DEEPSEEK_MAX_TOKENS: int = 1024
+    DEEPSEEK_TEMPERATURE: float = 0.3
+    # Intent classifier
+    INTENT_CLASSIFIER_MODEL: str = "facebook/bart-large-mnli"
+    INTENT_CLASSIFIER_ENABLED: bool = True
+    HF_HOME: str = "/tmp/hf_cache"
+    # Sliding window: number of message pairs sent to LLM
+    CHAT_SLIDING_WINDOW_PAIRS: int = 10
+    # Confidence threshold above which a "general question" classification
+    # blocks the LLM call and returns a canned off-topic reply.
+    INTENT_CLASSIFIER_OFF_TOPIC_THRESHOLD: float = 0.70
 
 
 @lru_cache

@@ -19,6 +19,7 @@ const profileSchema = z.object({
   spouseDisabled: z.boolean().nullable(),
   spouseWorking: z.boolean().nullable(),
   hasChildren: z.boolean().nullable(),
+  tin: z.string().nullable(),
 });
 
 export type MaritalStatus = z.infer<typeof maritalStatusSchema>;
@@ -29,6 +30,7 @@ export type UpdateProfileRequest = {
   spouseDisabled?: boolean | null;
   spouseWorking?: boolean | null;
   hasChildren?: boolean | null;
+  tin?: string | null;
 };
 
 async function getApiErrorMessage(

@@ -15,12 +15,16 @@ import {
 import { getStorageTier } from "../../lib/storage-tier";
 import { fetchUserYearWorkspace } from "../../lib/user-years";
 
+const SUPPLIER_TIN_REGEX = /^[A-Z]{1,2}[0-9]{10,11}$/;
+
 type EditFormState = {
   reliefCategoryId: string;
   merchantName: string;
   receiptDate: string;
   amount: string;
   notes: string;
+  einvoiceNumber: string;
+  supplierTin: string;
 };
 
 type EditFormErrors = {
@@ -79,9 +83,13 @@ export default function EditReceiptWorkspace({
     receiptDate: "",
     amount: "",
     notes: "",
+    einvoiceNumber: "",
+    supplierTin: "",
   });
   const [formErrors, setFormErrors] = useState<EditFormErrors>({});
   const [newFile, setNewFile] = useState<File | null>(null);
+  const [showEInvoice, setShowEInvoice] = useState<boolean | null>(null);
+  const [supplierTinError, setSupplierTinError] = useState<string | null>(null);
 
   const receiptQuery = useQuery({
     queryKey: ["receipt", receiptId],
@@ -99,12 +107,15 @@ export default function EditReceiptWorkspace({
 
   useEffect(() => {
     if (receipt) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm({
         reliefCategoryId: receipt.reliefCategoryId ?? "",
         merchantName: receipt.merchantName ?? "",
         receiptDate: receipt.receiptDate ?? "",
         amount: receipt.amount != null ? receipt.amount.toFixed(2) : "",
         notes: receipt.notes ?? "",
+        einvoiceNumber: receipt.einvoiceNumber ?? "",
+        supplierTin: receipt.supplierTin ?? "",
       });
     }
   }, [receipt]);
@@ -208,6 +219,10 @@ export default function EditReceiptWorkspace({
       </section>
     );
   }
+
+  // Auto-expand e-invoice section when the receipt already has e-invoice metadata.
+  const hasExistingEInvoiceData = !!(receipt.einvoiceUuid || receipt.einvoiceNumber || receipt.supplierTin);
+  const isEInvoiceExpanded = showEInvoice ?? hasExistingEInvoiceData;
 
   return (
     <section className="app-panel p-6 sm:p-7">
@@ -348,6 +363,89 @@ export default function EditReceiptWorkspace({
             <p className="mt-1.5 text-xs text-red-600">{formErrors.file}</p>
           ) : null}
         </div>
+
+        {/* ── E-Invoice Details (optional, collapsed by default) ──────── */}
+        <div className="rounded-card border border-brand-line bg-brand-white">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-5 py-4 text-sm font-semibold text-brand-black"
+            onClick={() => setShowEInvoice((v) => !(v ?? hasExistingEInvoiceData))}
+            aria-expanded={isEInvoiceExpanded}
+          >
+            <span className="flex items-center gap-2">
+              {receipt.einvoiceUuid ? (
+                <span
+                  className="app-pill text-xs"
+                  style={{ background: "#dcfce7", color: "#15803d", borderColor: "#86efac" }}
+                >
+                  ✓ MyInvois
+                </span>
+              ) : null}
+              E-Invoice Details{" "}
+              <span className="font-normal text-brand-muted">(optional)</span>
+            </span>
+            <span className="text-brand-muted">{isEInvoiceExpanded ? "▲" : "▼"}</span>
+          </button>
+
+          {isEInvoiceExpanded ? (
+            <div className="space-y-4 border-t border-brand-line px-5 pb-5 pt-4">
+              {receipt.einvoiceUuid ? (
+                <p className="rounded-card border border-green-200 bg-green-50 px-4 py-2 text-xs text-green-800">
+                  MyInvois UUID: <span className="font-mono">{receipt.einvoiceUuid}</span>
+                </p>
+              ) : null}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="app-label" htmlFor="einvoiceNumber">
+                    Invoice Number
+                  </label>
+                  <input
+                    id="einvoiceNumber"
+                    type="text"
+                    className="app-input"
+                    placeholder="e.g. INV-2025-001234"
+                    value={form.einvoiceNumber}
+                    onChange={(e) => setForm((f) => ({ ...f, einvoiceNumber: e.target.value }))}
+                  />
+                  <p className="app-help">The reference number printed on the e-invoice.</p>
+                </div>
+
+                <div>
+                  <label className="app-label" htmlFor="supplierTin">
+                    Supplier TIN
+                  </label>
+                  <input
+                    id="supplierTin"
+                    type="text"
+                    maxLength={13}
+                    className={`app-input uppercase ${supplierTinError ? "border-red-400 focus:border-red-400 focus:ring-red-400/20" : ""}`}
+                    placeholder="e.g. C0001234567"
+                    value={form.supplierTin}
+                    onChange={(e) => {
+                      const upper = e.target.value.toUpperCase().replace(/\s/g, "");
+                      setForm((f) => ({ ...f, supplierTin: upper }));
+                      if (upper === "" || SUPPLIER_TIN_REGEX.test(upper)) setSupplierTinError(null);
+                    }}
+                    onBlur={(e) => {
+                      const val = e.target.value.trim().toUpperCase();
+                      if (val !== "" && !SUPPLIER_TIN_REGEX.test(val)) {
+                        setSupplierTinError("Invalid TIN format (e.g. C0001234567)");
+                      } else {
+                        setSupplierTinError(null);
+                      }
+                    }}
+                  />
+                  <p className="app-help">The merchant&apos;s LHDN tax number.</p>
+                  {supplierTinError ? (
+                    <p className="mt-1.5 text-xs text-red-600">{supplierTinError}</p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+        {/* ── end E-Invoice Details ──────────────────────────────────── */}
 
         {saveMutation.error instanceof Error ? (
           <div className="rounded-card border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

@@ -16,3 +16,8 @@ class ExtractionResult(BaseModel):
     raw_ocr_block_count: int = 0
     processing_mode: Literal["heuristic", "model"] = "heuristic"
     error_detail: str | None = None
+    # MyInvois e-invoice metadata (populated when a validated e-invoice is uploaded)
+    is_einvoice: bool = False
+    einvoice_uuid: str | None = None
+    einvoice_number: str | None = None
+    supplier_tin: str | None = None

@@ -13,6 +13,7 @@ from app.models.job import ReceiptJob
 from app.services.normalization import (
     extract_amount_candidates,
     extract_date_candidates,
+    extract_einvoice_metadata,
     extract_merchant_candidates,
 )
 from app.services.postprocessing import postprocess
@@ -98,6 +99,7 @@ async def process_receipt(job: ReceiptJob) -> ExtractionResult:
     amount_candidates = extract_amount_candidates(blocks)
     date_candidates = extract_date_candidates(blocks)
     merchant_candidates = extract_merchant_candidates(blocks)
+    einvoice_meta = extract_einvoice_metadata(blocks)
 
     # --- 4. Postprocess ---
     result = postprocess(
@@ -108,6 +110,15 @@ async def process_receipt(job: ReceiptJob) -> ExtractionResult:
         job=job,
         settings=settings,
     )
+
+    # --- 4a. Merge e-invoice metadata into result ---
+    if einvoice_meta.get("is_einvoice"):
+        result = result.model_copy(update={
+            "is_einvoice": True,
+            "einvoice_uuid": einvoice_meta.get("einvoice_uuid"),
+            "einvoice_number": einvoice_meta.get("einvoice_number"),
+            "supplier_tin": einvoice_meta.get("supplier_tin"),
+        })
 
     bound_logger.info(
         "extraction_complete",

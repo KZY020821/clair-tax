@@ -49,9 +49,12 @@ import com.clairtax.backend.user.service.ProfileReliefResolver;
 import com.clairtax.backend.useryear.entity.UserPolicyYear;
 import com.clairtax.backend.useryear.repository.UserPolicyYearRepository;
 import org.springframework.core.io.Resource;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -589,6 +592,16 @@ public class ReceiptService {
             throw new CalculatorValidationException("Receipt amount is required before confirming the receipt");
         }
 
+        // Apply e-invoice metadata when provided (e.g. from AI extraction or manual entry).
+        String einvoiceUuid = normalizeOptionalString(request.einvoiceUuid());
+        if (einvoiceUuid != null || request.einvoiceNumber() != null || request.supplierTin() != null) {
+            receipt.applyEInvoiceMetadata(
+                    einvoiceUuid,
+                    normalizeOptionalString(request.einvoiceNumber()),
+                    normalizeOptionalString(request.supplierTin())
+            );
+        }
+
         receiptReviewActionRepository.save(new ReceiptReviewAction(
                 receipt,
                 ReceiptReviewActionType.CONFIRMED,
@@ -603,6 +616,15 @@ public class ReceiptService {
 
         syncClaim(previousUserPolicyYearId, previousReliefCategoryId);
         syncClaim(userPolicyYear.getId(), reliefCategory);
+        try {
+            receiptRepository.save(receipt);
+        } catch (DataIntegrityViolationException ex) {
+            // The uix_receipts_einvoice_uuid unique index fired — this e-invoice was already imported.
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "This e-invoice has already been imported. Each MyInvois document can only be linked once."
+            );
+        }
         return toResponse(receipt);
     }
 
@@ -767,6 +789,101 @@ public class ReceiptService {
         return findExistingUserYearForCurrentUser(year);
     }
 
+    public ReceiptResponse processReceiptFromChatAttachment(String chatS3Key, Integer year, String reliefCategoryHint) {
+        AppUser currentUser = getCurrentUserEntity();
+        UserPolicyYear userPolicyYear = findExistingUserPolicyYear(year);
+
+        String fileName = inferFileName(chatS3Key);
+        String mimeType = inferMimeType(fileName);
+
+        byte[] fileBytes;
+        try {
+            fileBytes = receiptObjectStorageService.load(chatS3Key).getInputStream().readAllBytes();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load chat attachment from storage: " + chatS3Key, e);
+        }
+
+        AiExtractionResult aiResult = aiExtractionService.extractFields(fileBytes, fileName, mimeType);
+        AiExtractionService.FilteredExtractionFields fields = aiExtractionService.applyThresholds(aiResult);
+
+        if (fields.amount() == null) {
+            throw new CalculatorValidationException(
+                    "Could not extract an amount from the receipt. Please upload a clearer image or add the receipt manually.");
+        }
+        if (fields.receiptDate() == null) {
+            throw new CalculatorValidationException(
+                    "Could not extract a date from the receipt. Please upload a clearer image or add the receipt manually.");
+        }
+
+        ReliefCategory reliefCategory = null;
+        if (reliefCategoryHint != null && !reliefCategoryHint.isBlank()) {
+            String hint = reliefCategoryHint.trim().toLowerCase();
+            reliefCategory = reliefCategoryRepository
+                    .findAllByPolicyYearIdOrderByDisplayOrderAscNameAsc(userPolicyYear.getPolicyYear().getId())
+                    .stream()
+                    .filter(c -> c.getName().toLowerCase().contains(hint))
+                    .filter(c -> profileReliefResolver.isCategoryVisible(currentUser, c))
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        String sanitizedFileName = sanitizeFileName(fileName);
+        String newObjectKey = "receipts-%d-%s-%s-%s".formatted(
+                year, currentUser.getId(), UUID.randomUUID(), sanitizedFileName);
+
+        try {
+            receiptObjectStorageService.storeUploadedObject(newObjectKey, new ByteArrayInputStream(fileBytes));
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to copy chat attachment to receipt storage", e);
+        }
+
+        Receipt receipt = new Receipt(
+                userPolicyYear,
+                reliefCategory,
+                null,
+                sanitizedFileName,
+                "pending",
+                properties.getBucketName(),
+                newObjectKey,
+                mimeType,
+                fileBytes.length,
+                UUID.randomUUID().toString().replace("-", ""),
+                ReceiptStatus.VERIFIED,
+                OffsetDateTime.now()
+        );
+        receipt.confirmReview(
+                userPolicyYear,
+                reliefCategory,
+                fields.merchantName() != null ? fields.merchantName() : "Receipt",
+                fields.receiptDate(),
+                fields.amount(),
+                fields.currency() != null ? fields.currency() : "MYR",
+                null
+        );
+
+        Receipt saved = receiptRepository.save(receipt);
+        saved.assignFileUrl(buildStoredFileUrl(saved.getId()));
+        syncClaim(userPolicyYear.getId(), reliefCategory);
+        return toResponse(saved);
+    }
+
+    public ReceiptResponse assignReceiptToYear(UUID receiptId, Integer year, UUID reliefCategoryId) {
+        CurrentUser currentUser = getCurrentUser();
+        Receipt receipt = receiptRepository.findDetailedByIdAndUserId(receiptId, currentUser.id())
+                .orElseThrow(() -> new ResourceNotFoundException("Receipt not found: " + receiptId));
+        UserPolicyYear userPolicyYear = userPolicyYearRepository
+                .findByUserIdAndPolicyYearYear(currentUser.id(), year)
+                .orElseThrow(() -> new ResourceNotFoundException("Year workspace not found for year: " + year));
+        ReliefCategory reliefCategory = null;
+        if (reliefCategoryId != null) {
+            reliefCategory = reliefCategoryRepository.findById(reliefCategoryId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Relief category not found: " + reliefCategoryId));
+        }
+        receipt.reassignYear(userPolicyYear, reliefCategory);
+        receiptRepository.save(receipt);
+        return toResponse(receipt);
+    }
+
     private void syncClaim(UUID userPolicyYearId, ReliefCategory reliefCategory) {
         syncClaim(userPolicyYearId, reliefCategory == null ? null : reliefCategory.getId());
     }
@@ -795,6 +912,9 @@ public class ReceiptService {
                 receipt.getProcessingErrorCode(),
                 receipt.getProcessingErrorMessage(),
                 latestExtraction == null ? null : toLatestExtractionResponse(latestExtraction),
+                receipt.getEinvoiceUuid(),
+                receipt.getEinvoiceNumber(),
+                receipt.getSupplierTin(),
                 receipt.getUploadedAt(),
                 receipt.getCreatedAt(),
                 receipt.getUpdatedAt()
@@ -939,6 +1059,23 @@ public class ReceiptService {
         } catch (IllegalArgumentException exception) {
             throw new CalculatorValidationException("Unknown receipt processing status " + status);
         }
+    }
+
+    private String inferFileName(String s3Key) {
+        String lastSegment = s3Key.contains("/") ? s3Key.substring(s3Key.lastIndexOf('/') + 1) : s3Key;
+        // Strip leading UUID prefix (36 chars UUID + 1 hyphen) if present
+        if (lastSegment.length() > 37 && lastSegment.charAt(36) == '-') {
+            lastSegment = lastSegment.substring(37);
+        }
+        return lastSegment.isBlank() ? "receipt" : lastSegment;
+    }
+
+    private String inferMimeType(String fileName) {
+        String lower = fileName.toLowerCase();
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".png")) return "image/png";
+        return "application/octet-stream";
     }
 
     private String sanitizeFileName(String fileName) {

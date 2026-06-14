@@ -581,3 +581,109 @@ def extract_merchant_candidates(blocks: list[OcrBlock]) -> list[Candidate]:
         )
 
     return sorted(candidates, key=lambda c: c.heuristic_score, reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# MyInvois e-invoice metadata extraction
+# ---------------------------------------------------------------------------
+
+# Standard UUID pattern (8-4-4-4-12 hex groups)
+_UUID_PATTERN = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+
+# LHDN TIN pattern: 1–2 uppercase letters followed by 10–11 digits
+_TIN_PATTERN = re.compile(r"\b([A-Z]{1,2}[0-9]{10,11})\b")
+
+# Invoice number labels (Malay and English)
+_INVOICE_NO_LABEL_RE = re.compile(
+    r"\b(Invoice\s*No\.?|No\.?\s*Invoice|No\.?\s*Invois|Inv\.?\s*No\.?|"
+    r"Invoice\s*Number|Nombor\s*Invois)\b",
+    re.IGNORECASE,
+)
+
+# MyInvois portal / LHDN detection signals
+_MYINVOIS_SIGNAL_RE = re.compile(
+    r"myinvois\.hasil\.gov\.my|MyInvois|LHDN\s+e.?Invois|e-Invoice\s+Malaysia",
+    re.IGNORECASE,
+)
+
+# Labels that indicate a TIN value is nearby
+_TIN_LABEL_RE = re.compile(
+    r"\b(TIN|No\.?\s*Cukai|Tax\s*ID|Supplier\s*TIN|Penjual\s*TIN)\b",
+    re.IGNORECASE,
+)
+
+# Invoice number value pattern — alphanumeric with hyphens/slashes, min 4 chars
+_INVOICE_NUMBER_VALUE_RE = re.compile(r"[A-Z0-9][-A-Z0-9/]{3,63}", re.IGNORECASE)
+
+
+def extract_einvoice_metadata(blocks: list[OcrBlock]) -> dict:
+    """
+    Detect MyInvois e-invoice signals in OCR blocks and extract:
+      - is_einvoice (bool)
+      - einvoice_uuid (str | None)
+      - einvoice_number (str | None)
+      - supplier_tin (str | None)
+
+    Returns a dict with those four keys. All values default to False/None when
+    the document does not appear to be a MyInvois validated e-invoice.
+    """
+    is_einvoice = False
+    einvoice_uuid: str | None = None
+    einvoice_number: str | None = None
+    supplier_tin: str | None = None
+
+    # --- 1. Detect MyInvois signals ---
+    for block in blocks:
+        if _MYINVOIS_SIGNAL_RE.search(block.text):
+            is_einvoice = True
+            break
+
+    # --- 2. Extract UUID (LHDN validation UUID is present on validated e-invoices) ---
+    for block in blocks:
+        m = _UUID_PATTERN.search(block.text)
+        if m:
+            einvoice_uuid = m.group(0)
+            is_einvoice = True  # A UUID on a receipt strongly implies MyInvois
+            break
+
+    # --- 3. Extract invoice number ---
+    # Strategy: find a block containing an invoice-number label, then look at
+    # the same block or the immediately following block for the actual reference.
+    for idx, block in enumerate(blocks):
+        if _INVOICE_NO_LABEL_RE.search(block.text):
+            # Try the same block first (e.g. "Invoice No: INV-2025-001")
+            same_block_without_label = _INVOICE_NO_LABEL_RE.sub("", block.text).strip(" :\t")
+            m = _INVOICE_NUMBER_VALUE_RE.search(same_block_without_label)
+            if m:
+                einvoice_number = m.group(0).strip()
+                break
+            # Otherwise check the immediately following block
+            if idx + 1 < len(blocks):
+                next_text = blocks[idx + 1].text.strip()
+                m2 = _INVOICE_NUMBER_VALUE_RE.match(next_text)
+                if m2:
+                    einvoice_number = m2.group(0).strip()
+                    break
+
+    # --- 4. Extract supplier TIN ---
+    # Strategy: find a TIN-label block, then extract TIN from the same or next block.
+    for idx, block in enumerate(blocks):
+        if _TIN_LABEL_RE.search(block.text):
+            m = _TIN_PATTERN.search(block.text)
+            if m:
+                supplier_tin = m.group(1)
+                break
+            if idx + 1 < len(blocks):
+                m2 = _TIN_PATTERN.search(blocks[idx + 1].text)
+                if m2:
+                    supplier_tin = m2.group(1)
+                    break
+
+    return {
+        "is_einvoice": is_einvoice,
+        "einvoice_uuid": einvoice_uuid,
+        "einvoice_number": einvoice_number,
+        "supplier_tin": supplier_tin,
+    }

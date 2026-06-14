@@ -62,7 +62,8 @@ public class ProfileService {
                 request.maritalStatus(),
                 request.spouseDisabled(),
                 request.spouseWorking(),
-                request.hasChildren()
+                request.hasChildren(),
+                request.tin()
         );
 
         return toResponse(user);
@@ -179,7 +180,8 @@ public class ProfileService {
                 user.getMaritalStatus(),
                 user.getSpouseDisabled(),
                 user.getSpouseWorking(),
-                user.getHasChildren()
+                user.getHasChildren(),
+                user.getTin()
         );
     }
 

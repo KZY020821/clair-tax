@@ -4,11 +4,13 @@ import com.clairtax.backend.auth.service.AuthSessionView;
 import com.clairtax.backend.auth.service.MagicLinkAuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.annotation.Fallback;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@Fallback
 public class SessionCurrentUserProvider implements CurrentUserProvider {
 
     private final MagicLinkAuthService magicLinkAuthService;

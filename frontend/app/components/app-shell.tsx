@@ -61,6 +61,19 @@ function CalculatorIcon(props: IconProps) {
   );
 }
 
+function ChatIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...props}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+        d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3-3-3z"
+      />
+    </svg>
+  );
+}
+
 function ProfileIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...props}>
@@ -312,15 +325,17 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
 
             {/* Primary nav */}
             <nav className="space-y-1">
-              {(["/" , "/calculator", "/profile"] as const).map((href) => {
+              {(["/" , "/calculator", "/chat", "/profile"] as const).map((href) => {
                 const labels: Record<string, string> = {
                   "/": "Dashboard",
                   "/calculator": "Calculator",
+                  "/chat": "AI Assistant",
                   "/profile": "Profile",
                 };
                 const icons: Record<string, ComponentType<IconProps>> = {
                   "/": DashboardIcon,
                   "/calculator": CalculatorIcon,
+                  "/chat": ChatIcon,
                   "/profile": ProfileIcon,
                 };
                 const active = isActivePath(pathname, href);
@@ -423,6 +438,7 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
             {[
               { href: "/", label: "Dashboard" },
               { href: "/calculator", label: "Calculator" },
+              { href: "/chat", label: "AI Assistant" },
               { href: "/profile", label: "Profile" },
             ].map(({ href, label }) => (
               <Link
@@ -436,6 +452,7 @@ export default function AppShell({ children, currentYear }: AppShellProps) {
           </div>
         </div>
       </footer>
+
     </div>
   );
 }

@@ -39,6 +39,7 @@ ai-service/.pytest_cache/
 ai-service/.ruff_cache/
 ai-service/__pycache__/
 ai-service/samples/*
+ai-service/.hf_cache/
 
 # Test and coverage output
 coverage/

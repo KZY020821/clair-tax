@@ -78,6 +78,15 @@ public class Receipt {
     @Column(nullable = false, length = 16)
     private ReceiptStatus status;
 
+    @Column(name = "einvoice_uuid", length = 36)
+    private String einvoiceUuid;
+
+    @Column(name = "einvoice_number", length = 64)
+    private String einvoiceNumber;
+
+    @Column(name = "supplier_tin", length = 20)
+    private String supplierTin;
+
     @Column(name = "processing_error_code", length = 120)
     private String processingErrorCode;
 
@@ -145,6 +154,12 @@ public class Receipt {
         this.status = ReceiptStatus.VERIFIED;
         this.processingErrorCode = null;
         this.processingErrorMessage = null;
+    }
+
+    public void applyEInvoiceMetadata(String einvoiceUuid, String einvoiceNumber, String supplierTin) {
+        this.einvoiceUuid = einvoiceUuid;
+        this.einvoiceNumber = einvoiceNumber;
+        this.supplierTin = supplierTin;
     }
 
     public void rejectReview(String notes, String invalidReasonCode, String invalidReasonMessage) {
@@ -217,6 +232,13 @@ public class Receipt {
         this.fileUrl = fileUrl;
     }
 
+    public void reassignYear(UserPolicyYear newUserPolicyYear, ReliefCategory newReliefCategory) {
+        this.userPolicyYear = newUserPolicyYear;
+        if (newReliefCategory != null) {
+            this.reliefCategory = newReliefCategory;
+        }
+    }
+
     public UUID getId() {
         return id;
     }
@@ -283,6 +305,18 @@ public class Receipt {
 
     public ReceiptStatus getStatus() {
         return status;
+    }
+
+    public String getEinvoiceUuid() {
+        return einvoiceUuid;
+    }
+
+    public String getEinvoiceNumber() {
+        return einvoiceNumber;
+    }
+
+    public String getSupplierTin() {
+        return supplierTin;
     }
 
     public String getProcessingErrorCode() {

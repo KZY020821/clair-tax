@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Map;
 
@@ -59,6 +60,11 @@ public class LocalReceiptObjectStorageService implements ReceiptObjectStorageSer
     @Override
     public void delete(String objectKey) throws IOException {
         Files.deleteIfExists(resolvedPath(objectKey));
+    }
+
+    @Override
+    public String generatePresignedGetUrl(String objectKey, Duration ttl) {
+        return null;
     }
 
     private Path resolvedPath(String objectKey) {

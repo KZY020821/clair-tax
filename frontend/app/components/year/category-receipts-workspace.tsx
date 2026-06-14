@@ -210,6 +210,15 @@ export default function CategoryReceiptsWorkspace({
                         {receipt.merchantName ?? receipt.fileName ?? "Receipt awaiting extraction"}
                       </p>
                       <span className="app-pill-blue">{formatStatus(receipt.status)}</span>
+                      {receipt.einvoiceUuid ? (
+                        <span
+                          className="app-pill text-xs"
+                          style={{ background: "#dcfce7", color: "#15803d", borderColor: "#86efac" }}
+                          title={`MyInvois UUID: ${receipt.einvoiceUuid}`}
+                        >
+                          ✓ MyInvois
+                        </span>
+                      ) : null}
                     </div>
                     <p className="mt-2 text-sm leading-7 text-brand-muted">
                       {receipt.receiptDate ? formatReceiptDate(receipt.receiptDate) : "Date pending"}

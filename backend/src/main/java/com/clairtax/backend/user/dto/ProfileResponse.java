@@ -11,6 +11,7 @@ public record ProfileResponse(
         MaritalStatus maritalStatus,
         Boolean spouseDisabled,
         Boolean spouseWorking,
-        Boolean hasChildren
+        Boolean hasChildren,
+        String tin
 ) {
 }

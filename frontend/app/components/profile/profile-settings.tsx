@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   deleteAccount,
   fetchProfile,
@@ -16,12 +16,15 @@ import {
   describeMaritalStatus,
 } from "../../lib/profile-relief-visibility";
 
+const TIN_REGEX = /^[A-Z]{1,2}[0-9]{10,11}$/;
+
 type ProfileFormState = {
   isDisabled: boolean;
   maritalStatus: MaritalStatus;
   spouseDisabled: boolean;
   spouseWorking: boolean;
   hasChildren: boolean;
+  tin: string;
 };
 
 function toFormState(profile: UserProfile): ProfileFormState {
@@ -31,10 +34,17 @@ function toFormState(profile: UserProfile): ProfileFormState {
     spouseDisabled: profile.spouseDisabled === true,
     spouseWorking: profile.spouseWorking === true,
     hasChildren: profile.hasChildren === true,
+    tin: profile.tin ?? "",
   };
 }
 
+function normalizeTin(tin: string): string | null {
+  const trimmed = tin.trim().toUpperCase();
+  return trimmed === "" ? null : trimmed;
+}
+
 function buildPayload(formState: ProfileFormState): UpdateProfileRequest {
+  const tin = normalizeTin(formState.tin);
   if (formState.maritalStatus === "married") {
     return {
       isDisabled: formState.isDisabled,
@@ -42,6 +52,7 @@ function buildPayload(formState: ProfileFormState): UpdateProfileRequest {
       spouseDisabled: formState.spouseDisabled,
       spouseWorking: formState.spouseWorking,
       hasChildren: formState.hasChildren,
+      tin,
     };
   }
 
@@ -50,12 +61,14 @@ function buildPayload(formState: ProfileFormState): UpdateProfileRequest {
       isDisabled: formState.isDisabled,
       maritalStatus: formState.maritalStatus,
       hasChildren: formState.hasChildren,
+      tin,
     };
   }
 
   return {
     isDisabled: formState.isDisabled,
     maritalStatus: formState.maritalStatus,
+    tin,
   };
 }
 
@@ -100,6 +113,10 @@ export default function ProfileSettings() {
   const queryClient = useQueryClient();
   const [draftFormState, setDraftFormState] = useState<ProfileFormState | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [tinError, setTinError] = useState<string | null>(null);
+  const [tinCopied, setTinCopied] = useState(false);
+  const [tinRevealed, setTinRevealed] = useState(false);
+  const tinCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const profileQuery = useQuery({
     queryKey: ["profile"],
@@ -129,10 +146,13 @@ export default function ProfileSettings() {
           spouseDisabled: null,
           spouseWorking: null,
           hasChildren: null,
+          tin: null,
         };
         setDraftFormState(toFormState(resetProfile));
         queryClient.setQueryData(["profile"], resetProfile);
       }
+      setTinError(null);
+      setTinRevealed(false);
 
       setShowDeleteModal(false);
       await Promise.all([
@@ -178,6 +198,11 @@ export default function ProfileSettings() {
   const formState = draftFormState ?? toFormState(profile);
   const facts = buildProfileFactList(profile);
 
+  const savedTin = profile.tin;
+  const maskedTin = savedTin
+    ? `${savedTin.slice(0, savedTin.length - 4)}••••`
+    : null;
+
   return (
     <div className="space-y-6">
       <section className="app-panel p-6 sm:p-7">
@@ -214,6 +239,16 @@ export default function ProfileSettings() {
                   {fact}
                 </span>
               ))}
+              {maskedTin ? (
+                <button
+                  type="button"
+                  title="Click to reveal full TIN"
+                  onClick={() => setTinRevealed((v) => !v)}
+                  className="app-pill cursor-pointer border-brand-blue text-brand-blue transition hover:bg-brand-ice"
+                >
+                  TIN: {tinRevealed ? savedTin : maskedTin}
+                </button>
+              ) : null}
             </div>
           </article>
         </div>
@@ -348,6 +383,89 @@ export default function ProfileSettings() {
               }}
             />
           ) : null}
+
+          {/* ── TIN section ──────────────────────────────────────────────── */}
+          <article className="rounded-card border border-brand-line bg-brand-white px-5 py-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-muted">
+              Tax ID (TIN)
+            </p>
+            <p className="mt-3 text-sm leading-6 text-brand-muted">
+              Your LHDN income tax reference number. Merchants use it to link
+              e-invoices to your tax file — making your receipts automatically
+              traceable for relief claims.
+            </p>
+
+            <div className="mt-4 flex items-center gap-3">
+              <input
+                id="tin"
+                type="text"
+                maxLength={13}
+                placeholder="e.g. OG1234567890"
+                className={`app-input flex-1 uppercase ${tinError ? "border-red-400 focus:border-red-400 focus:ring-red-400/20" : ""}`}
+                value={formState.tin}
+                onChange={(e) => {
+                  const upper = e.target.value.toUpperCase().replace(/\s/g, "");
+                  setDraftFormState((cur) => ({ ...(cur ?? formState), tin: upper }));
+                  if (upper === "" || TIN_REGEX.test(upper)) {
+                    setTinError(null);
+                  }
+                }}
+                onBlur={(e) => {
+                  const val = e.target.value.trim().toUpperCase();
+                  if (val !== "" && !TIN_REGEX.test(val)) {
+                    setTinError("Format: OG or SG followed by 10–11 digits (e.g. OG1234567890)");
+                  } else {
+                    setTinError(null);
+                  }
+                }}
+              />
+              {formState.tin && TIN_REGEX.test(formState.tin) ? (
+                <button
+                  type="button"
+                  className="app-button-secondary shrink-0"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(formState.tin);
+                    setTinCopied(true);
+                    if (tinCopyTimerRef.current) clearTimeout(tinCopyTimerRef.current);
+                    tinCopyTimerRef.current = setTimeout(() => setTinCopied(false), 2000);
+                  }}
+                >
+                  {tinCopied ? "Copied!" : "Copy"}
+                </button>
+              ) : null}
+            </div>
+
+            {tinError ? (
+              <p className="mt-1.5 text-xs text-red-600">{tinError}</p>
+            ) : (
+              <p className="app-help mt-2">
+                Format: <strong>OG</strong> (salaried) or <strong>SG</strong> (self-employed), followed by 10–11 digits.
+                Find it on your EA form, past tax return, or at{" "}
+                <a
+                  href="https://mytax.hasil.gov.my"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-brand-blue hover:underline"
+                >
+                  mytax.hasil.gov.my
+                </a>
+                .
+              </p>
+            )}
+
+            <p className="mt-2 text-xs text-brand-muted">
+              No TIN yet?{" "}
+              <a
+                href="https://mytax.hasil.gov.my/TaxTin/apply"
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-brand-blue hover:underline"
+              >
+                Register at LHDN →
+              </a>
+            </p>
+          </article>
+          {/* ── end TIN section ──────────────────────────────────────────── */}
 
           {updateMutation.error instanceof Error ? (
             <div className="rounded-card border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
