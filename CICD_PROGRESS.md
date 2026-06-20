@@ -97,7 +97,16 @@ Done:
   Java 21 with maven cache → `./mvnw -B -ntp test`), path-filtered to
   `backend/**`. Note: repo uses a custom `mvnw` that uses the committed Maven
   3.9.9 dist or downloads it — works on clean CI runners. Tests run on H2 (no DB
-  needed). Pushed on branch `ci/backend-pipeline` to watch via PR.
+  needed). PR #3.
+- **Backend CI first ran RED — CI correctly caught unfinished WIP.** 3 tests
+  failed with 404 on `POST /api/user-years/{year}/receipts/upload-intent`. Root
+  cause: the WIP commit built the full upload-intent flow (DTOs, entity,
+  repository, migrations V9/V10, `ReceiptService.createUploadIntent` +
+  `confirmUpload`, and the test harness) but never wired the two HTTP endpoints
+  in `UserYearController`. Fix: added `POST .../upload-intent` and
+  `POST .../confirm-upload` handlers delegating to the existing service methods.
+  Verified green locally (`UserYearControllerIntegrationTest` 5/5,
+  `ProfileControllerIntegrationTest` 3/3).
 
 Decisions:
 - **GitHub Actions** chosen as CI tool (already on GitHub, free, config-in-repo).

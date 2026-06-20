@@ -1,8 +1,11 @@
 package com.clairtax.backend.useryear.controller;
 
+import com.clairtax.backend.receipt.dto.ConfirmReceiptUploadRequest;
+import com.clairtax.backend.receipt.dto.CreateReceiptUploadIntentRequest;
 import com.clairtax.backend.receipt.dto.DirectReceiptUploadRequest;
 import com.clairtax.backend.receipt.dto.QuickExtractResponse;
 import com.clairtax.backend.receipt.dto.ReceiptResponse;
+import com.clairtax.backend.receipt.dto.ReceiptUploadIntentResponse;
 import com.clairtax.backend.receipt.service.ReceiptService;
 import com.clairtax.backend.useryear.dto.CreateUserYearRequest;
 import com.clairtax.backend.useryear.dto.UserYearResponse;
@@ -89,5 +92,23 @@ public class UserYearController {
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(receiptService.quickExtract(year, reliefCategoryId, file));
+    }
+
+    @PostMapping("/{year}/receipts/upload-intent")
+    public ResponseEntity<ReceiptUploadIntentResponse> createUploadIntent(
+            @PathVariable Integer year,
+            @Valid @RequestBody CreateReceiptUploadIntentRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(receiptService.createUploadIntent(year, request));
+    }
+
+    @PostMapping("/{year}/receipts/confirm-upload")
+    public ResponseEntity<ReceiptResponse> confirmUpload(
+            @PathVariable Integer year,
+            @Valid @RequestBody ConfirmReceiptUploadRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(receiptService.confirmUpload(year, request));
     }
 }
