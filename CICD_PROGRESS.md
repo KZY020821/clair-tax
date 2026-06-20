@@ -66,6 +66,9 @@ latency (fallback: `ap-southeast-1` Singapore).
 
 - [ ] **Phase 0 — Dockerize:** confirm/author Dockerfiles for backend & ai-service; run locally.
 - [~] **Phase 1 — CI (GitHub Actions, no cloud):** lint + build + test per service, path-filtered.
+  - [x] Frontend (`frontend-ci.yml`) — merged
+  - [~] Backend (`backend-ci.yml`) — PR open
+  - [ ] AI service (`ai-service-ci.yml`)
 - [ ] **Phase 2 — Cloud foundations (Terraform):** AWS account, Budgets, VPC, ECR, S3, Secrets Manager.
 - [ ] **Phase 3 — CD to staging:** build image → ECR → deploy Fargate; Aurora/RDS; Amplify; Lambda+SQS; smoke tests.
 - [ ] **Phase 4 — Production + manual approval gate:** duplicate env via Terraform; auto-scaling; CloudFront+WAF.
@@ -88,6 +91,22 @@ Done:
   (checkout → install Bun 1.3.8 → `bun install --frozen-lockfile` → `bun run
   lint` → `bun run build`), path-filtered to `frontend/**`. Triggers on push to
   `main` and on pull requests.
+- **Frontend CI is GREEN and MERGED.** PR #2 (`ci/frontend-pipeline` → `main`)
+  passed and was squash-merged (commit `2f6d3d4`). Branch deleted.
+- Authored **`.github/workflows/backend-ci.yml`** (checkout → setup Temurin
+  Java 21 with maven cache → `./mvnw -B -ntp test`), path-filtered to
+  `backend/**`. Note: repo uses a custom `mvnw` that uses the committed Maven
+  3.9.9 dist or downloads it — works on clean CI runners. Tests run on H2 (no DB
+  needed). PR #3.
+- **Backend CI first ran RED — CI correctly caught unfinished WIP.** 3 tests
+  failed with 404 on `POST /api/user-years/{year}/receipts/upload-intent`. Root
+  cause: the WIP commit built the full upload-intent flow (DTOs, entity,
+  repository, migrations V9/V10, `ReceiptService.createUploadIntent` +
+  `confirmUpload`, and the test harness) but never wired the two HTTP endpoints
+  in `UserYearController`. Fix: added `POST .../upload-intent` and
+  `POST .../confirm-upload` handlers delegating to the existing service methods.
+  Verified green locally (`UserYearControllerIntegrationTest` 5/5,
+  `ProfileControllerIntegrationTest` 3/3).
 
 Decisions:
 - **GitHub Actions** chosen as CI tool (already on GitHub, free, config-in-repo).
