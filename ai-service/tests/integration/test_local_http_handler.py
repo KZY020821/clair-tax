@@ -1,7 +1,7 @@
 """Integration tests for FastAPI HTTP endpoints using TestClient."""
 
 import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -132,7 +132,7 @@ class TestProcessReceiptEndpoint:
             date="2024-03-15",
             merchant_name="MYDIN SUPERMARKET SDN BHD",
         )
-        with patch("app.main.process_receipt", return_value=fake_result) as mock_proc:
+        with patch("app.main.process_receipt", return_value=fake_result):
             response = client.post(
                 "/api/process-receipt",
                 json={

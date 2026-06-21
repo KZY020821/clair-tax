@@ -2,13 +2,11 @@
 
 import pytest
 
-from app.clients.ocr import OcrBlock
 from app.config import get_settings
 from app.models.job import ReceiptJob
 from app.services.normalization import Candidate
 from app.services.postprocessing import (
     _determine_status,
-    _load_model,
     _select_heuristic,
     postprocess,
 )

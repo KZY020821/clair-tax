@@ -1,9 +1,8 @@
 import io
-import os
 
 import pytest
 from moto import mock_aws
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from app.clients.ocr import OcrBlock
 from app.config import get_settings
@@ -111,7 +110,6 @@ def mock_s3(sample_receipt_image):
 @pytest.fixture
 def mock_backend_api(respx_mock):
     """Mock backend PUT /api/receipts/{id}/extraction → 200."""
-    import re
 
     import httpx
 

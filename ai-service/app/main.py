@@ -5,7 +5,6 @@ import traceback
 
 import structlog
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
 from PIL import Image
 
 from app.clients.backend_api import BackendApiError
@@ -149,7 +148,7 @@ async def demo_summary(file: UploadFile = File(...)) -> ExtractionResult:
 
     try:
         blocks = await loop.run_in_executor(None, extract_blocks_from_file, raw_bytes, receipt_id)
-    except OcrExtractionError as exc:
+    except OcrExtractionError:
         return ExtractionResult(
             receipt_id=receipt_id,
             extraction_status="failed",

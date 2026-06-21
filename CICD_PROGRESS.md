@@ -66,9 +66,9 @@ latency (fallback: `ap-southeast-1` Singapore).
 
 - [ ] **Phase 0 — Dockerize:** confirm/author Dockerfiles for backend & ai-service; run locally.
 - [~] **Phase 1 — CI (GitHub Actions, no cloud):** lint + build + test per service, path-filtered.
-  - [x] Frontend (`frontend-ci.yml`) — merged
-  - [~] Backend (`backend-ci.yml`) — PR open
-  - [ ] AI service (`ai-service-ci.yml`)
+  - [x] Frontend (`frontend-ci.yml`) — merged (#2)
+  - [x] Backend (`backend-ci.yml`) — merged (#3, fixed WIP endpoint to go green)
+  - [~] AI service (`ai-service-ci.yml`) — PR open
 - [ ] **Phase 2 — Cloud foundations (Terraform):** AWS account, Budgets, VPC, ECR, S3, Secrets Manager.
 - [ ] **Phase 3 — CD to staging:** build image → ECR → deploy Fargate; Aurora/RDS; Amplify; Lambda+SQS; smoke tests.
 - [ ] **Phase 4 — Production + manual approval gate:** duplicate env via Terraform; auto-scaling; CloudFront+WAF.
@@ -106,7 +106,20 @@ Done:
   in `UserYearController`. Fix: added `POST .../upload-intent` and
   `POST .../confirm-upload` handlers delegating to the existing service methods.
   Verified green locally (`UserYearControllerIntegrationTest` 5/5,
-  `ProfileControllerIntegrationTest` 3/3).
+  `ProfileControllerIntegrationTest` 3/3). Squash-merged (#3, commit `4aafd7b`).
+- Authored **`.github/workflows/ai-service-ci.yml`** (checkout → setup Python
+  3.11 with pip cache → install `requirements-ci.txt` → `ruff check app tests`
+  → `pytest tests/unit`), path-filtered to `ai-service/**`.
+- Added **`ai-service/requirements-ci.txt`** — a lightweight dependency set that
+  EXCLUDES the heavy ML stack (easyocr/torch/transformers/scikit-learn/PyMuPDF).
+  Works because `app/clients/ocr.py` imports easyocr lazily and the OCR unit
+  tests mock `get_ocr_reader`, so the heavy libs are never loaded. Keeps the
+  ai-service pipeline fast (seconds, not minutes).
+- Cleaned 56 pre-existing `ruff` violations (55 via `ruff check --fix` —
+  whitespace + unused imports; 1 unused `with ... as` binding by hand).
+- Verified in a fresh throwaway venv: lean install + `ruff` clean + 61 unit
+  tests pass. Integration tests (`tests/integration`) deferred — they need the
+  full ML stack / AWS mocking and are a later enhancement.
 
 Decisions:
 - **GitHub Actions** chosen as CI tool (already on GitHub, free, config-in-repo).
@@ -118,10 +131,13 @@ Decisions:
 
 ## 6. Next action
 
-- Push branch `ci/frontend-pipeline` with `frontend-ci.yml`, open a PR, and watch
-  the GitHub Actions run. Read logs together if red.
-- Then add `backend-ci.yml` (`./mvnw test`) and `ai-service-ci.yml`
-  (`ruff` + light `pytest`).
+- Merge the ai-service CI PR to finish **Phase 1** (all 3 services have CI).
+- Optional Phase 1 polish: add **branch protection** on `main` requiring the CI
+  checks to pass before merge (the real safety payoff of CI). Bump
+  `actions/checkout`/`setup-java` to avoid the Node 20 deprecation warning.
+  Consider adding `ai-service` integration tests later (needs full ML stack).
+- Then begin **Phase 2 — Cloud foundations (Terraform)**: AWS account + Budgets
+  alerts first, then VPC, ECR, S3, Secrets Manager.
 
 ---
 
