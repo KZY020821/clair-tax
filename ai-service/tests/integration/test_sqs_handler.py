@@ -1,6 +1,5 @@
 """Integration tests for SQS Lambda handler with moto S3 and partial batch failure."""
 
-import asyncio
 import json
 from unittest.mock import patch
 

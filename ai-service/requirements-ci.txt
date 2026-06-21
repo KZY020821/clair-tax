@@ -1,0 +1,13 @@
+# Lightweight dependency set for CI (lint + unit tests only).
+#
+# Deliberately EXCLUDES the heavy ML/runtime stack from requirements.txt
+# (easyocr, torch via easyocr, transformers, scikit-learn, PyMuPDF). The unit
+# tests never load those: app/clients/ocr.py imports easyocr lazily and the
+# tests mock get_ocr_reader, so only these light libs are needed to import the
+# modules under test.
+-r requirements-dev.txt
+pydantic==2.7.1
+pydantic-settings==2.2.1
+structlog==24.1.0
+Pillow==10.3.0
+word2number

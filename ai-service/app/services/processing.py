@@ -1,12 +1,11 @@
 import asyncio
 import time
-import traceback
 
 import structlog
 
-from app.clients.backend_api import BackendApiClient, BackendApiError
+from app.clients.backend_api import BackendApiClient
 from app.clients.ocr import OcrExtractionError, extract_blocks_from_file
-from app.clients.s3_storage import S3StorageClient, StorageError
+from app.clients.s3_storage import S3StorageClient
 from app.config import get_settings
 from app.models.extraction import ExtractionResult
 from app.models.job import ReceiptJob
