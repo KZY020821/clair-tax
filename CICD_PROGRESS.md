@@ -65,10 +65,12 @@ latency (fallback: `ap-southeast-1` Singapore).
 ## 4. Roadmap (phases)
 
 - [ ] **Phase 0 — Dockerize:** confirm/author Dockerfiles for backend & ai-service; run locally.
-- [~] **Phase 1 — CI (GitHub Actions, no cloud):** lint + build + test per service, path-filtered.
+- [x] **Phase 1 — CI (GitHub Actions, no cloud):** lint + build + test per service, path-filtered. DONE.
   - [x] Frontend (`frontend-ci.yml`) — merged (#2)
   - [x] Backend (`backend-ci.yml`) — merged (#3, fixed WIP endpoint to go green)
-  - [~] AI service (`ai-service-ci.yml`) — PR open
+  - [x] AI service (`ai-service-ci.yml`) — merged (#4, lean ML-free CI)
+  - [x] Branch protection on `main` requiring the 3 checks
+  - [ ] (later) Aggregator "CI Gate" job to fix the path-filter required-check caveat
 - [ ] **Phase 2 — Cloud foundations (Terraform):** AWS account, Budgets, VPC, ECR, S3, Secrets Manager.
 - [ ] **Phase 3 — CD to staging:** build image → ECR → deploy Fargate; Aurora/RDS; Amplify; Lambda+SQS; smoke tests.
 - [ ] **Phase 4 — Production + manual approval gate:** duplicate env via Terraform; auto-scaling; CloudFront+WAF.
@@ -120,6 +122,13 @@ Done:
 - Verified in a fresh throwaway venv: lean install + `ruff` clean + 61 unit
   tests pass. Integration tests (`tests/integration`) deferred — they need the
   full ML stack / AWS mocking and are a later enhancement.
+
+- **Branch protection enabled on `main`** (via `gh api PUT .../branches/main/protection`):
+  require a PR before merging + require the 3 checks (`build-and-lint`, `test`,
+  `lint-and-test`); `enforce_admins=false`; 0 required approvals (solo repo).
+  Known caveat: path-filtered workflows mean a PR not touching a service leaves
+  that service's check unreported ("Expected — waiting"); admin override is used
+  to merge such PRs. Proper fix for later = a single aggregator "CI Gate" job.
 
 Decisions:
 - **GitHub Actions** chosen as CI tool (already on GitHub, free, config-in-repo).
